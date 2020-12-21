@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/jansi
+jansi.so
+jansi.dylib
+jansi.dll
+jansi.a
+jansi.lib
+jansi-test-*
+*.exe
+*.o
+*.obj
+*.lst

@@ -1,0 +1,26 @@
+name "jansi"
+description "A single file, betterC compatible ANSI library."
+authors "Sealab"
+copyright "Copyright © 2020, Sealab"
+license "MIT"
+targetType "library"
+targetPath "bin"
+
+configuration "default" {
+    targetType "library"
+}
+
+configuration "betterc" {
+    targetType "library"
+    dflags "-betterC"
+    versions "JANSI_BetterC"
+}
+
+configuration "unittest" {
+    dependency "silly" version="~>1.0.2"
+}
+
+configuration "unittest-betterc-lite" {
+    versions "JANSI_BetterC"
+    dependency "silly" version="~>1.0.2"
+}
