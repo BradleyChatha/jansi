@@ -1,3 +1,4 @@
+/// Utilities for writing and reading ANSI styled text.
 module jansi;
 
 import std.range : isOutputRange;
@@ -14,14 +15,28 @@ else
     private enum BetterC = false;
 }
 
+/// Used to determine if an `AnsiColour` is a background or foreground colour.
 alias IsBgColour = Flag!"isBg";
+
+/// Used by certain functions to determine if they should only output an ANSI sequence, or output their entire sequence + data.
 alias AnsiOnly = Flag!"ansiOnly";
+
+/// An 8-bit ANSI colour - an index into the terminal's colour palette.
 alias Ansi8BitColour = ubyte;
 
+/// The string that starts an ANSI command sequence.
 immutable ANSI_CSI                = "\033[";
+
+/// The character that delimits ANSI parameters.
 immutable ANSI_SEPERATOR          = ';';
+
+/// The character used to denote that the sequence is an SGR sequence.
 immutable ANSI_COLOUR_END         = 'm';
+
+/// The sequence used to reset all styling.
 immutable ANSI_COLOUR_RESET       = ANSI_CSI~"0"~ANSI_COLOUR_END;
+
+/// The amount to increment an `Ansi4BitColour` by in order to access the background version of the colour.
 immutable ANSI_FG_TO_BG_INCREMENT = 10;
 
 /+++ COLOUR TYPES +++/
@@ -51,7 +66,6 @@ enum AnsiColourType
  + ++/
 enum Ansi4BitColour
 {
-    // To get Background code, just add 10
     black           = 30,
     red             = 31,
     green           = 32,
@@ -73,39 +87,55 @@ enum Ansi4BitColour
     brightWhite     = 97
 }
 
+/++
+ + Contains a 3-byte, RGB colour.
+ + ++/
 @safe
 struct AnsiRgbColour
 {
     union
     {
+        /// The RGB components as an array.
         ubyte[3] components;
 
         struct {
+            /// The red component.
             ubyte r;
+
+            /// The green component.
             ubyte g;
+
+            /// The blue component.
             ubyte b;
         }
-
-        uint asInt; // Last byte is unused.
     }
 
     @safe @nogc nothrow pure:
 
+    /++
+     + Construct this colour from 3 ubyte components, in RGB order.
+     +
+     + Params:
+     +  components = The components to use.
+     + ++/
     this(ubyte[3] components)
     {
         this.components = components;
     }
 
+    /++
+     + Construct this colour from the 3 provided ubyte components.
+     +
+     + Params:
+     +  r = The red component.
+     +  g = The green component.
+     +  b = The blue component.
+     + ++/
     this(ubyte r, ubyte g, ubyte b)
     {
         this.r = r;
         this.g = g;
         this.b = b;
-    }
-
-    this(uint asInt)
-    {
-        this.asInt = asInt;
     }
 }
 
@@ -116,14 +146,25 @@ private union AnsiColourUnion
     AnsiRgbColour  rgb;
 }
 
+/++
+ + Contains any type of ANSI colour and provides the ability to create a valid SGR command to set the foreground/background.
+ +
+ + This struct overloads `opAssign` allowing easy assignment from `Ansi4BitColour`, `Ansi8BitColour`, `AnsiRgbColour`, and any user-defined type
+ + that satisfies `isUserDefinedRgbType`.
+ + ++/
 @safe
 struct AnsiColour
 {
-    static immutable FG_MARKER        = "38";
-    static immutable BG_MARKER        = "48";
-    static immutable EIGHT_BIT_MARKER = '5';
-    static immutable RGB_MARKER       = '2';
+    private static immutable FG_MARKER        = "38";
+    private static immutable BG_MARKER        = "48";
+    private static immutable EIGHT_BIT_MARKER = '5';
+    private static immutable RGB_MARKER       = '2';
 
+    /++
+     + The maximum amount of characters any singular `AnsiColour` sequence may use.
+     +
+     + This is often used to create a static array to temporarily, and without allocation, store the sequence for an `AnsiColour`.
+     + ++/
     enum MAX_CHARS_NEEDED = "38;2;255;255;255".length;
 
     private
@@ -146,29 +187,67 @@ struct AnsiColour
     @safe @nogc nothrow pure
     {
         // Seperate, non-templated constructors as that's a lot more documentation-generator-friendly.
+
+        /++
+         + Construct a 4-bit colour.
+         +
+         + Params:
+         +  colour = The 4-bit colour to use.
+         +  isBg   = Determines whether this colour sets the foreground or the background.
+         + ++/
         this(Ansi4BitColour colour, IsBgColour isBg = IsBgColour.no)
         {
             this = colour;
             this._isBg = isBg;
         }
         
+        /++
+         + Construct an 8-bit colour.
+         +
+         + Params:
+         +  colour = The 8-bit colour to use.
+         +  isBg   = Determines whether this colour sets the foreground or the background.
+         + ++/
         this(Ansi8BitColour colour, IsBgColour isBg = IsBgColour.no)
         {
             this = colour;
             this._isBg = isBg;
         }
 
+        /++
+         + Construct an RGB colour.
+         +
+         + Params:
+         +  colour = The RGB colour to use.
+         +  isBg   = Determines whether this colour sets the foreground or the background.
+         + ++/
         this(AnsiRgbColour colour, IsBgColour isBg = IsBgColour.no)
         {
             this = colour;
             this._isBg = isBg;
         }
 
+        /++
+         + Construct an RGB colour.
+         +
+         + Params:
+         +  r      = The red component.
+         +  g      = The green component.
+         +  b      = The blue component.
+         +  isBg   = Determines whether this colour sets the foreground or the background.
+         + ++/
         this(ubyte r, ubyte g, ubyte b, IsBgColour isBg = IsBgColour.no)
         {
             this(AnsiRgbColour(r, g, b), isBg);
         }
 
+        /++
+         + Construct an RGB colour.
+         +
+         + Params:
+         +  colour = The user-defined colour type that satisfies `isUserDefinedRgbType`.
+         +  isBg   = Determines whether this colour sets the foreground or the background.
+         + ++/
         this(T)(T colour, IsBgColour isBg = IsBgColour.no)
         if(isUserDefinedRgbType!T)
         {
@@ -176,6 +255,9 @@ struct AnsiColour
             this._isBg = isBg;
         }
 
+        /++
+         + Allows direct assignment from any type that can also be used in any of this struct's ctors.
+         + ++/
         auto opAssign(T)(T colour) return
         if(!is(T == typeof(this)))
         {
@@ -278,6 +360,12 @@ struct AnsiColour
 
     static if(!BetterC)
     {
+        /++
+         + [Not enabled in -betterC] Converts this `AnsiColour` into a GC-allocated sequence string.
+         +
+         + See_Also:
+         +  `toSequence`
+         + ++/
         @trusted nothrow
         string toString() const
         {
@@ -294,7 +382,24 @@ struct AnsiColour
         }
     }
 
-    // For a sink that's a pre-made, statically sized buffer.
+    /++
+     + Creates an ANSI SGR command that either sets the foreground, or the background (`isBg`) to the colour
+     + stored inside of this `AnsiColour`.
+     +
+     + Please note that the CSI (`ANSI_CSI`/`\033[`) and the SGR marker (`ANSI_COLOUR_END`/`m`) are not included
+     + in this output.
+     +
+     + Notes:
+     +  Any characters inside of `buffer` that are not covered by the returned slice, are left unmodified.
+     +
+     +  If this colour hasn't been initialised or assigned a value, then the returned value is simply `null`.
+     +
+     + Params:
+     +  buffer = The statically allocated buffer used to store the result of this function.
+     +
+     + Returns:
+     +  A slice into `buffer` that contains the output of this function.
+     + ++/
     @safe @nogc
     char[] toSequence(ref return char[MAX_CHARS_NEEDED] buffer) nothrow const
     {
@@ -370,6 +475,12 @@ struct AnsiColour
 }
 
 /+++ MISC TYPES +++/
+
+/++
+ + A list of styling options provided by ANSI SGR.
+ +
+ + As a general rule of thumb, assume most of these won't work inside of a Windows command prompt (unless it's the new Windows Terminal).
+ + ++/
 enum AnsiSgrStyle
 {
     none      = 0,
@@ -413,9 +524,18 @@ private template getMaxSgrStyleCharCount()
     enum getMaxSgrStyleCharCount = calculate();
 }
 
+/++
+ + Contains any number of styling options from `AnsiStyleSgr`, and provides the ability to generate
+ + an ANSI SGR command to apply all of the selected styling options.
+ + ++/
 @safe
 struct AnsiStyle
 {
+    /++
+     + The maximum amount of characters any singular `AnsiStyle` sequence may use.
+     +
+     + This is often used to create a static array to temporarily, and without allocation, store the sequence for an `AnsiStyle`.
+     + ++/
     enum MAX_CHARS_NEEDED = getMaxSgrStyleCharCount!();
 
     private
@@ -450,12 +570,23 @@ struct AnsiStyle
     /+++ SETTERS +++/
     @safe @nogc nothrow pure
     {
+        /// Removes all styling from this `AnsiStyle`.
         AnsiStyle reset() return
         {
             this._sgrBitmask = 0;
             return this;
         }
 
+        /++
+         + Enables/Disables a certain styling option.
+         +
+         + Params:
+         +  style  = The styling option to enable/disable.
+         +  enable = If true, enable the option. If false, disable it.
+         +
+         + Returns:
+         +  `this` for chaining.
+         + ++/
         AnsiStyle set(AnsiSgrStyle style, bool enable) return
         {
             if(enable)
@@ -465,31 +596,56 @@ struct AnsiStyle
             return this;
         }
 
+        ///
         AnsiStyle bold(bool enable = true) return { this.setSgrBit!true(AnsiSgrStyle.bold); return this; }
+        ///
         AnsiStyle dim(bool enable = true) return { this.setSgrBit!true(AnsiSgrStyle.dim); return this; }
+        ///
         AnsiStyle italic(bool enable = true) return { this.setSgrBit!true(AnsiSgrStyle.italic); return this; }
+        ///
         AnsiStyle underline(bool enable = true) return { this.setSgrBit!true(AnsiSgrStyle.underline); return this; }
+        ///
         AnsiStyle slowBlink(bool enable = true) return { this.setSgrBit!true(AnsiSgrStyle.slowBlink); return this; }
+        ///
         AnsiStyle fastBlink(bool enable = true) return { this.setSgrBit!true(AnsiSgrStyle.fastBlink); return this; }
+        ///
         AnsiStyle invert(bool enable = true) return { this.setSgrBit!true(AnsiSgrStyle.invert); return this; }
+        ///
         AnsiStyle strike(bool enable = true) return { this.setSgrBit!true(AnsiSgrStyle.strike); return this; }
     }
 
     /+++ GETTERS +++/
     @safe @nogc nothrow pure const
     {
+        /++
+         + Get the status of a certain styling option.
+         +
+         + Params:
+         +  style = The styling option to get.
+         +
+         + Returns:
+         +  `true` if the styling option is enabled, `false` otherwise.
+         + ++/
         bool get(AnsiSgrStyle style)
         {
             return this.getSgrBit(style);
         }
         
+        ///
         bool bold() { return this.getSgrBit(AnsiSgrStyle.bold); }
+        ///
         bool dim() { return this.getSgrBit(AnsiSgrStyle.dim); }
+        ///
         bool italic() { return this.getSgrBit(AnsiSgrStyle.italic); }
+        ///
         bool underline() { return this.getSgrBit(AnsiSgrStyle.underline); }
+        ///
         bool slowBlink() { return this.getSgrBit(AnsiSgrStyle.slowBlink); }
+        ///
         bool fastBlink() { return this.getSgrBit(AnsiSgrStyle.fastBlink); }
+        ///
         bool invert() { return this.getSgrBit(AnsiSgrStyle.invert); }
+        ///
         bool strike() { return this.getSgrBit(AnsiSgrStyle.strike); }
     }
 
@@ -497,6 +653,12 @@ struct AnsiStyle
 
     static if(!BetterC)
     {
+        /++
+         + [Not enabled in -betterC] Converts this `AnsiStyle` into a GC-allocated sequence string.
+         +
+         + See_Also:
+         +  `toSequence`
+         + ++/
         @trusted nothrow
         string toString() const
         {
@@ -507,17 +669,30 @@ struct AnsiStyle
         }
     }
 
+    /++
+     + Creates an ANSI SGR command that enables all of the desired styling options, while leaving all of the other options unchanged.
+     +
+     + Please note that the CSI (`ANSI_CSI`/`\033[`) and the SGR marker (`ANSI_COLOUR_END`/`m`) are not included
+     + in this output.
+     +
+     + Notes:
+     +  Any characters inside of `buffer` that are not covered by the returned slice, are left unmodified.
+     +
+     +  If this colour hasn't been initialised or assigned a value, then the returned value is simply `null`.
+     +
+     + Params:
+     +  buffer = The statically allocated buffer used to store the result of this function.
+     +
+     + Returns:
+     +  A slice into `buffer` that contains the output of this function.
+     + ++/
     @safe @nogc
     char[] toSequence(ref return char[MAX_CHARS_NEEDED] buffer) nothrow const
     {
         import std.traits : EnumMembers;
 
         if(this._sgrBitmask == 0)
-        {
-            //buffer[0] = '0';
-            //return buffer[0..1];
             return null;
-        }
 
         size_t cursor;
         void numIntoBuffer(uint num)
@@ -561,45 +736,85 @@ struct AnsiStyle
 }
 
 /+++ DATA WITH COLOUR TYPES +++/
+
+/++
+ + Contains an `AnsiColour` for the foreground, an `AnsiColour` for the background, and an `AnsiStyle` for additional styling,
+ + and provides the ability to create an ANSI SGR command to set the foreground, background, and overall styling of the terminal.
+ +
+ + A.k.a This is just a container over two `AnsiColour`s and an `AnsiStyle`.
+ + ++/
 @safe
-struct AnsiChar
+struct AnsiStyleSet
 {
-    enum MAX_CHARS_NEEDED = (AnsiColour.MAX_CHARS_NEEDED * 2) + AnsiStyle.MAX_CHARS_NEEDED + 2; // + 2 for the char itself and the end marker.
+    /++
+     + The maximum amount of characters any singular `AnsiStyle` sequence may use.
+     +
+     + This is often used to create a static array to temporarily, and without allocation, store the sequence for an `AnsiStyle`.
+     + ++/
+    enum MAX_CHARS_NEEDED = (AnsiColour.MAX_CHARS_NEEDED * 2) + AnsiStyle.MAX_CHARS_NEEDED;
 
     private AnsiColour _fg;
     private AnsiColour _bg;
+    /// The `AnsiStyle` to use.
     AnsiStyle style;
-    char value;
 
     // As usual, functions are manually made for better documentation.
 
     /+++ SETTERS +++/
     @safe @nogc nothrow
     {
-        AnsiChar fg(AnsiColour colour) return { this._fg = colour; this._fg.isBg = IsBgColour.no; return this; }
-        AnsiChar fg(Ansi4BitColour colour) return { return this.fg(AnsiColour(colour)); }
-        AnsiChar fg(Ansi8BitColour colour) return { return this.fg(AnsiColour(colour)); }
-        AnsiChar fg(AnsiRgbColour colour) return { return this.fg(AnsiColour(colour)); }
+        ///
+        AnsiStyleSet fg(AnsiColour colour) return { this._fg = colour; this._fg.isBg = IsBgColour.no; return this; }
+        ///
+        AnsiStyleSet fg(Ansi4BitColour colour) return { return this.fg(AnsiColour(colour)); }
+        ///
+        AnsiStyleSet fg(Ansi8BitColour colour) return { return this.fg(AnsiColour(colour)); }
+        ///
+        AnsiStyleSet fg(AnsiRgbColour colour) return { return this.fg(AnsiColour(colour)); }
 
-        AnsiChar bg(AnsiColour colour) return { this._bg = colour; this._bg.isBg = IsBgColour.yes; return this; }
-        AnsiChar bg(Ansi4BitColour colour) return { return this.bg(AnsiColour(colour)); }
-        AnsiChar bg(Ansi8BitColour colour) return { return this.bg(AnsiColour(colour)); }
-        AnsiChar bg(AnsiRgbColour colour) return { return this.bg(AnsiColour(colour)); }
+        ///
+        AnsiStyleSet bg(AnsiColour colour) return { this._bg = colour; this._bg.isBg = IsBgColour.yes; return this; }
+        AnsiStyleSet bg(Ansi4BitColour colour) return { return this.bg(AnsiColour(colour)); }
+        ///
+        AnsiStyleSet bg(Ansi8BitColour colour) return { return this.bg(AnsiColour(colour)); }
+        ///
+        AnsiStyleSet bg(AnsiRgbColour colour) return { return this.bg(AnsiColour(colour)); }
+        ///
 
-        AnsiChar chainStyle(AnsiStyle style) return { this.style = style; return this; }
-        AnsiChar chainValue(char ch) return { this.value = ch; return this; }
+        ///
+        AnsiStyleSet chainStyle(AnsiStyle style) return { this.style = style; return this; }
     }
 
     /+++ GETTERS +++/
     @safe @nogc nothrow const
     {
+        ///
         AnsiColour fg() { return this._fg; }
+        ///
         AnsiColour bg() { return this._bg; }
     }
 
     /+++ OUTPUT ++/
+    /++
+     + Creates an ANSI SGR command that sets the foreground colour, sets the background colour,
+     + and enables all of the desired styling options, while leaving all of the other options unchanged.
+     +
+     + Please note that the CSI (`ANSI_CSI`/`\033[`) and the SGR marker (`ANSI_COLOUR_END`/`m`) are not included
+     + in this output.
+     +
+     + Notes:
+     +  Any characters inside of `buffer` that are not covered by the returned slice, are left unmodified.
+     +
+     +  If this colour hasn't been initialised or assigned a value, then the returned value is simply `null`.
+     +
+     + Params:
+     +  buffer = The statically allocated buffer used to store the result of this function.
+     +
+     + Returns:
+     +  A slice into `buffer` that contains the output of this function.
+     + ++/
     @safe @nogc
-    char[] toSequence(ref return char[MAX_CHARS_NEEDED] buffer, AnsiOnly ansiOnly = AnsiOnly.no) nothrow const
+    char[] toSequence(ref return char[MAX_CHARS_NEEDED] buffer) nothrow const
     {
         size_t cursor;
 
@@ -622,45 +837,98 @@ struct AnsiChar
         buffer[cursor..cursor + slice.length] = slice[];
         cursor += slice.length;
 
-        if(!ansiOnly)
-        {
-            buffer[cursor++] = ANSI_COLOUR_END;
-            buffer[cursor++] = this.value;
-        }
-
         return buffer[0..cursor];
     }
     ///
-    @("AnsiChar.toSequence")
+    @("AnsiStyleSet.toSequence")
     unittest
     {
-        char[AnsiChar.MAX_CHARS_NEEDED] buffer;
+        char[AnsiStyleSet.MAX_CHARS_NEEDED] buffer;
 
-        void test(string expected, AnsiChar ch, AnsiOnly ansiOnly)
+        void test(string expected, AnsiStyleSet ch)
         {
-            auto slice = ch.toSequence(buffer, ansiOnly);
+            auto slice = ch.toSequence(buffer);
             assert(slice == expected, "Got '"~slice~"' expected '"~expected~"'");
         }
 
-        test("ma", AnsiChar.init.chainValue('a'), AnsiOnly.no);
-        test("", AnsiChar.init.chainValue('a'), AnsiOnly.yes);
+        test("", AnsiStyleSet.init);
         test(
-            "32;48;2;255;128;64;1;4ma", 
-            AnsiChar.init
+            "32;48;2;255;128;64;1;4", 
+            AnsiStyleSet.init
                     .fg(Ansi4BitColour.green)
                     .bg(AnsiRgbColour(255, 128, 64))
                     .chainStyle(AnsiStyle.init.bold.underline)
-                    .chainValue('a'),
-            AnsiOnly.no
         );
     }
 }
 
+/++
+ + An enumeration used by an `AnsiText` implementation to describe any special features that `AnsiText` needs to mold
+ + itself around.
+ + ++/
 enum AnsiTextImplementationFeatures
 {
-    basic = 0, // Supports at least `.put`, `.toSink`, `char[] .newSlice`, and allows `AnsiText` to handle the encoding.
+    /// Supports at least `.put`, `.toSink`, `char[] .newSlice`, and allows `AnsiText` to handle the encoding.
+    basic = 0, 
 }
 
+/++
+ + Contains a string that supports the ability for different parts of the string to be styled seperately.
+ +
+ + This struct is highly flexible and dynamic, as it requires the use of external code to provide some
+ + of the implementation.
+ +
+ + Because this is provided via a `mixin template`, implementations can also $(B extend) this struct to 
+ + provide their own functionality, make things non-copyable if needed, allows data to be stored via ref-counting, etc.
+ +
+ + This struct itself is mostly just a consistant user-facing interface that all implementations share, while the implementations
+ + themselves can transform this struct to any level it requires.
+ +
+ + Implementations_:
+ +  While implementations can add whatever functions, operator overloads, constructors, etc. that they want, there is a small
+ +  set of functions and value that each implmentation must define in order to be useable.
+ +
+ +  Every implementation must define an enum called `Features` who's value is one of the values of `AnsiTextImplementationFeatures`.
+ +  For example: `enum Features = AnsiTextImplementationFeatures.xxx`
+ +
+ +  Builtin implementations consist of `AnsiTextGC` (not enabled with -betterC) and `AnsiTextMalloc`, which are self-descriptive.
+ +
+ + Basic_Implemetations:
+ +  An implementation that doesn't require anything noteworthy from `AnsiText` itself should define their features as `AnsiTextImplementationFeatures.basic`.
+ +
+ +  This type of implementation must implement the following functions (expressed here as an interface for simplicity):
+ +
+ +  ```
+ interface BasicImplementation
+ {
+     /// Provides `AnsiText` with a slice that is of at least `minLength` in size.
+     ///
+     /// This function is called `AnsiText` needs to insert more styled characters into the string.
+     ///
+     /// How this slice is stored and allocated and whatever else, is completely down to the implementation.
+     /// Remember that because you're a mixin template, you can use referencing counting, disable the copy ctor, etc!
+     ///
+     /// The slice will never be escaped by `AnsiText` itself, and will not be stored beyond a single function call.
+     char[] newSlice(size_t minLength);
+
+     /// Outputs the styled string into the provided sink.
+     ///
+     /// Typically this is an OutputRange that can handle `char[]`s, but it can really be whatever the implementation wants to support.
+     void toSink(Sink)(Sink sink);
+
+     static if(NotCompilingUnderBetterC && ImplementationDoesntDefineToString)
+     final string toString()
+     {
+         // Autogenerated GC-based implementation provided by `AnsiText`.
+         //
+         // For implementations where this can be generated, it just makes them a little easier for the user
+         // to use with things like `writeln`.
+         //
+         // The `static if` shows the conditions for this to happen.
+     }
+ }
+ +  ```
+ + ++/
 struct AnsiText(alias ImplementationMixin)
 {
     mixin ImplementationMixin;
@@ -671,10 +939,10 @@ struct AnsiText(alias ImplementationMixin)
         fg.isBg = IsBgColour.no;
         bg.isBg = IsBgColour.yes;
 
-        char[AnsiChar.MAX_CHARS_NEEDED] sequence;
-        auto sequenceSlice = AnsiChar.init.fg(fg).bg(bg).chainStyle(style).toSequence(sequence, AnsiOnly.yes);
+        char[AnsiStyleSet.MAX_CHARS_NEEDED] sequence;
+        auto sequenceSlice = AnsiStyleSet.init.fg(fg).bg(bg).chainStyle(style).toSequence(sequence);
 
-        auto minLength = ANSI_CSI.length + sequenceSlice.length + /*ANSI_COLOUR_END*/1 + text.length;
+        auto minLength = ANSI_CSI.length + sequenceSlice.length + /*ANSI_COLOUR_END*/1 + text.length + ((sequenceSlice.length > 0) ? 2 : 1); // Last one is for the '0' or '0;'
         char[] slice = this.newSlice(minLength);
         size_t cursor;
 
@@ -685,9 +953,18 @@ struct AnsiText(alias ImplementationMixin)
         }
 
         appendToSlice(ANSI_CSI);
+        appendToSlice("0"); // Reset all previous styling
+        if(sequenceSlice.length > 0)
+            slice[cursor++] = ANSI_SEPERATOR;
         appendToSlice(sequenceSlice);
         slice[cursor++] = ANSI_COLOUR_END;
         appendToSlice(text);
+    }
+
+    /// ditto.
+    void put()(const(char)[] text, AnsiStyleSet styling)
+    {
+        this.put(text, styling.fg, styling.bg, styling.style);
     }
 
     // Generate a GC-based toString if circumstances allow.
@@ -697,6 +974,23 @@ struct AnsiText(alias ImplementationMixin)
      && !BetterC
     )
     {
+        /++
+         + [Not enabled with -betterC] Provides this `AnsiText` as a printable string.
+         +
+         + If the implementation is a basic implementation (see the documentation for `AnsiText`); if the
+         + implementation doesn't define its own `toString`, and if we're not compliling under -betterC, then
+         + `AnsiText` will generate this function on behalf of the implementation.
+         +
+         + Description:
+         +  For basic implementations this function will call `toSink` with an `Appender!(char[])` as the sink.
+         +
+         +  For $(B this default generated) implementation of `toString`, it is a seperate GC-allocated string so is
+         +  fine for any usage. If an implementation defines its own `toString` then it should also document what the lifetime
+         +  of its returned string is.
+         +
+         + Returns:
+         +  This `AnsiText` as a useable string.
+         + ++/
         string toString()()
         {
             import std.array : Appender;
@@ -716,12 +1010,16 @@ private template TestAnsiTextImpl(alias TextT)
     static assert(__traits(hasMember, TextT, "Features"),
         "Implementation must define: `enum Features = AnsiTextImplementationFeatures.xxx;`"
     );
-    static assert(__traits(hasMember, TextT, "newSlice"),
-        "Implementation must define: `char[] newSlice(size_t minLength)`"
-    );
-    static assert(__traits(hasMember, TextT, "toSink"),
-        "Implementation must define: `void toSink(Sink)(Sink sink)`"
-    );
+
+    static if(TextT.Features == AnsiTextImplementationFeatures.basic)
+    {
+        static assert(__traits(hasMember, TextT, "newSlice"),
+            "Implementation must define: `char[] newSlice(size_t minLength)`"
+        );
+        static assert(__traits(hasMember, TextT, "toSink"),
+            "Implementation must define: `void toSink(Sink)(Sink sink)`"
+        );
+    }
 }
 
 @("AnsiText.toString - Autogenerated GC-based")
@@ -736,7 +1034,7 @@ unittest
         text.put("ld!", AnsiColour(Ansi4BitColour.green));
 
         auto str      = text.toString();
-        auto expected = "\033[mHello, \033[38;2;1;2;3;48;2;3;2;1;1;4mWor\033[32mld!\033[0m";
+        auto expected = "\033[0mHello, \033[0;38;2;1;2;3;48;2;3;2;1;1;4mWor\033[0;32mld!\033[0m";
 
         assert(
             str == expected, 
@@ -751,6 +1049,7 @@ unittest
 static if(!BetterC)
 {
     // Very naive implementation just so I have something to start off with.
+    ///
     mixin template AnsiTextGCImplementation()
     {
         private char[][] _slices;
@@ -772,9 +1071,18 @@ static if(!BetterC)
             sink.put(ANSI_COLOUR_RESET);
         }
     }
+
+    /++
+     + A basic implementation that uses the GC for memory storage.
+     +
+     + Since the memory is GC allocated there's no real fears to note.
+     +
+     + Allows `AnsiText` to be copied, but changes between copies are not reflected between eachother. Remember to use `ref`!
+     + ++/
     alias AnsiTextGC = AnsiText!AnsiTextGCImplementation;
 }
 
+///
 mixin template AnsiTextMallocImplementation()
 {
     import std.experimental.allocator.mallocator, std.experimental.allocator;
@@ -815,9 +1123,20 @@ mixin template AnsiTextMallocImplementation()
         sink.put(ANSI_COLOUR_RESET);
     }
 }
+
+/++
+ + A basic implementation using `malloc` backed memory.
+ +
+ + This implementation disables copying for `AnsiText`, as it makes use of RAII to cleanup its resources.
+ +
+ + Sinks should keep in mind that they are being passed manually managed memory, so it should be considered an error
+ + if the sink stores any provided slices outside of its `.put` function. i.e. Copy the data, don't keep it around unless you know what you're doing.
+ + ++/
 alias AnsiTextMalloc = AnsiText!AnsiTextMallocImplementation;
 
 /+++ PUBLIC HELPERS +++/
+
+/// Determines if `CT` is a valid RGB data type.
 enum isUserDefinedRgbType(CT) =
 (
     __traits(hasMember, CT, "r")
@@ -825,6 +1144,18 @@ enum isUserDefinedRgbType(CT) =
  && __traits(hasMember, CT, "b")
 );
 
+/++
+ + Converts any suitable data type into an `AnsiColour`.
+ +
+ + Params:
+ +  colour = The colour to convert.
+ +
+ + Returns:
+ +  An `AnsiColour` created from the given `colour`.
+ +
+ + See_Also:
+ +  `isUserDefinedRgbType`
+ + ++/
 AnsiColour to(T : AnsiColour, CT)(CT colour)
 if(isUserDefinedRgbType!CT)
 {
@@ -845,6 +1176,7 @@ unittest
     assert(RGB(255, 128, 64).to!AnsiColour == AnsiColour(255, 128, 64));
 }
 
+/// ditto.
 AnsiColour toBg(T)(T c)
 {
     auto colour = to!AnsiColour(c);
