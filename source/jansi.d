@@ -891,7 +891,10 @@ enum AnsiTextImplementationFeatures
  +  Every implementation must define an enum called `Features` who's value is one of the values of `AnsiTextImplementationFeatures`.
  +  For example: `enum Features = AnsiTextImplementationFeatures.xxx`
  +
- +  Builtin implementations consist of `AnsiTextGC` (not enabled with -betterC) and `AnsiTextMalloc`, which are self-descriptive.
+ +  Builtin implementations consist of `AnsiTextGC` (not enabled with -betterC), `AnsiTextStack`, and `AnsiTextMalloc`, which are self-descriptive.
+ +
+ +  If the implementation mixin requires additional compile-time parameters, you can pass them into `AnsiText`'s `MixinArgs` template parameter, and it'll
+ +  forward them through.
  +
  + Basic_Implemetations:
  +  An implementation that doesn't require anything noteworthy from `AnsiText` itself should define their features as `AnsiTextImplementationFeatures.basic`.
@@ -929,9 +932,9 @@ enum AnsiTextImplementationFeatures
  }
  +  ```
  + ++/
-struct AnsiText(alias ImplementationMixin)
+struct AnsiText(alias ImplementationMixin, MixinArgs...)
 {
-    mixin ImplementationMixin;
+    mixin ImplementationMixin!MixinArgs;
     alias ___TEST = TestAnsiTextImpl!(typeof(this));
 
     void put()(const(char)[] text, AnsiColour fg = AnsiColour.init, AnsiColour bg = AnsiColour.bgInit, AnsiStyle style = AnsiStyle.init)
@@ -1044,6 +1047,7 @@ unittest
 
     genericTest(AnsiTextGC.init);
     genericTest(AnsiTextMalloc.init);
+    genericTest(AnsiTextStack!100.init);
 }
 
 static if(!BetterC)
@@ -1094,7 +1098,9 @@ mixin template AnsiTextMallocImplementation()
 
     // Stuff like this is why I went for this very strange design decision of using user-defined mixin templates.
     @disable this(this){}
-    ~this()
+
+    @nogc
+    ~this() nothrow
     {
         if(this._slices !is null)
         {
@@ -1104,7 +1110,8 @@ mixin template AnsiTextMallocImplementation()
         }
     }
 
-    char[] newSlice(size_t minLength)
+    @nogc
+    char[] newSlice(size_t minLength) nothrow
     {
         auto slice = Mallocator.instance.makeArray!char(minLength);
         if(this._slices is null)
@@ -1133,6 +1140,62 @@ mixin template AnsiTextMallocImplementation()
  + if the sink stores any provided slices outside of its `.put` function. i.e. Copy the data, don't keep it around unless you know what you're doing.
  + ++/
 alias AnsiTextMalloc = AnsiText!AnsiTextMallocImplementation;
+
+///
+mixin template AnsiTextStackImplementation(size_t Capacity)
+{
+    enum Features = AnsiTextImplementationFeatures.basic;
+
+    private char[Capacity] _output;
+    private size_t _cursor;
+
+    // This code by itself is *technically* safe, but the way the user uses it might not be.
+
+    @safe @nogc
+    char[] newSlice(size_t minLength) nothrow
+    {
+        const end = this._cursor + minLength;
+        assert(end <= this._output.length, "Ran out of space.");
+
+        auto slice = this._output[this._cursor..end];
+        this._cursor = end;
+
+        return slice;
+    }
+
+    void toSink(Sink)(ref Sink sink)
+    if(isOutputRange!(Sink, char[]))
+    {
+        sink.put(this.asStackSlice);
+        sink.put(ANSI_COLOUR_RESET);
+    }
+
+    @safe @nogc
+    char[] asStackSlice() nothrow
+    {
+        return this._output[0..this._cursor];    
+    }
+
+    @safe @nogc
+    char[Capacity] asStackSliceCopy(ref size_t lengthInUse) nothrow
+    {
+        lengthInUse = this._cursor;
+        return this._output;
+    }
+}
+
+/++
+ + A basic implementation using a static amount of stack memory.
+ +
+ + Sinks should keep in mind that they're being passed a slice to stack memory, so should not persist slices outside of their `.put` function,
+ + they must instead make a copy of the data.
+ +
+ + This implementation will fail an assert if the user attempts to push more data into it than it can handle.
+ +
+ + Params:
+ +  Capacity = The amount of characters to use on the stack.
+ + ++/
+alias AnsiTextStack(size_t Capacity) = AnsiText!(AnsiTextStackImplementation, Capacity);
 
 /+++ PUBLIC HELPERS +++/
 
