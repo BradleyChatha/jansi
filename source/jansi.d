@@ -1084,7 +1084,8 @@ struct AnsiTextLite
      + ++/
     void toString(scope void delegate(const(char)[]) sink) const
     {
-        this.toSink(sink);
+        foreach(slice; this.toRange())
+            sink(slice);
     }
 
     /++
@@ -1101,10 +1102,10 @@ struct AnsiTextLite
      + Params:
      +  sink = The sink to output into.
      + ++/
-    void toSink(Sink)(scope Sink sink) const
+    void toSink(Sink)(scope ref Sink sink) const
     {
         foreach(slice; this.toRange())
-            sink(slice);
+            sink.put(slice);
     }
 }
 ///
@@ -1118,6 +1119,7 @@ unittest
 
     // Usage 1: Manually
     import core.stdc.stdio : printf;
+    import std.stdio : writeln, write;
     version(JANSI_TestOutput) // Just so test output isn't clogged. This still shows you how to use things though.
     {
         char[AnsiTextLite.MAX_CHARS_NEEDED + 1] startSequence; // + 1 for null terminator.
@@ -1149,7 +1151,6 @@ unittest
         printf("\n");
 
         // GC
-        import std.stdio;
         foreach(slice; text.toRange)
             write(slice);
         writeln();
@@ -1158,18 +1159,47 @@ unittest
     // Usage 3: toString (Sink-based, so AnsiTextLite doesn't allocate, but writeln/the sink might)
     version(JANSI_TestOutput)
     {
-        import std.stdio;
         writeln(text); // Calls the sink-based .toString();
     }
 
     // Usage 4: toString (non-sink, non-betterc only)
     version(JANSI_TestOutput)
     {
-        import std.stdio;
         writeln(text.toString());
+    }
+
+    // Usage 5: toSink
+    version(JANSI_TestOutput)
+    {
+        struct CustomOutputRange
+        {
+            char[] output;
+            @safe
+            void put(const(char)[] slice) nothrow
+            {
+                const start = output.length;
+                output.length += slice.length;
+                output[start..$] = slice[];
+            }
+        }
+
+        CustomOutputRange sink;
+        ()@safe nothrow{ text.toSink(sink); }();
+        
+        writeln(sink.output);
     }
 }
 
+/++
+ + Creates an `AnsiTextLite` from the given `text`. This function is mostly used when using
+ + the fluent UFCS chaining pattern.
+ +
+ + Params:
+ +  text = The text to use.
+ +
+ + Returns:
+ +  An `AnsiTextLite` from the given `text`.
+ + ++/
 AnsiTextLite ansiLite(const(char)[] text)
 {
     return AnsiTextLite(text);
