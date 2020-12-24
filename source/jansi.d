@@ -1191,21 +1191,6 @@ unittest
 }
 
 /++
- + Creates an `AnsiTextLite` from the given `text`. This function is mostly used when using
- + the fluent UFCS chaining pattern.
- +
- + Params:
- +  text = The text to use.
- +
- + Returns:
- +  An `AnsiTextLite` from the given `text`.
- + ++/
-AnsiTextLite ansiLite(const(char)[] text)
-{
-    return AnsiTextLite(text);
-}
-
-/++
  + Contains a string that supports the ability for different parts of the string to be styled seperately.
  +
  + This struct is highly flexible and dynamic, as it requires the use of external code to provide some
@@ -1592,6 +1577,36 @@ unittest
     }
 
     assert(RGB(255, 128, 64).toBg == AnsiColour(255, 128, 64, IsBgColour.yes));
+}
+
+/++
+ + Creates an `AnsiTextLite` from the given `text`. This function is mostly used when using
+ + the fluent UFCS chaining pattern.
+ +
+ + Params:
+ +  text = The text to use.
+ +
+ + Returns:
+ +  An `AnsiTextLite` from the given `text`.
+ + ++/
+@safe @nogc
+AnsiTextLite ansiLite(const(char)[] text) nothrow pure
+{
+    return AnsiTextLite(text);
+}
+///
+@("ansiLite")
+unittest
+{
+    version(none)
+    {
+        import std.stdio;
+        writeln("Hello, World!".ansiLite
+                               .fg(Ansi4BitColour.red)
+                               .bg(AnsiRgbColour(128, 128, 128))
+                               .chainStyle(AnsiStyle.init.bold.underline)
+        );
+    }
 }
 
 /+++ PRIVATE HELPERS +++/
