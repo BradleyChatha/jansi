@@ -1,0 +1,39 @@
+on: [push, pull_request]
+
+name: Build and Test
+
+jobs:
+  test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    matrix:
+        dc: [ldc-latest, dmd-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        
+      - name: Setup LDC
+        uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ${{ matrix.dc }}
+
+      - name: Build (Debug)
+        run: dub build
+
+      - name: Build (Release)
+        run: dub build -b release
+
+      - name: Build (BetterC Debug)
+        run: dub build -c betterc
+
+      - name: Build (BetterC Release)
+        run: dub build -c betterc -b release
+
+      - name: Test (Default)
+        run: dub test
+
+      - name: Test (Fake BetterC)
+        run: dub test -c unittest-betterc-lite
+
+      - name: Test (Allow output)
+        run: dub test -c unittest-print

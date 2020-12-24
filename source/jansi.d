@@ -895,7 +895,7 @@ enum AnsiTextImplementationFeatures
  +  If you're not compiling under `-betterc`, then `AnsiTextLite.toString()` will provide you with a GC-allocated string containing:
  +  the start ANSI sequence; the text to display; and the end ANSI sequence. i.e. A string that is just ready to be printed.
  +
- +  This struct also implements the sink-based version of `toString`, which means when used directly with things like `writeln`, this struct
+ +  This struct also implements the sink-based version of `toString`, which means that when used directly with things like `writeln`, this struct
  +  is able to avoid allocations (unless the sink itself allocates). See the unittest for an example.
  +
  + See_Also:
