@@ -722,16 +722,19 @@ struct AnsiStyle
     @("AnsiStyle.toSequence(char[])")
     unittest
     {
-        char[AnsiStyle.MAX_CHARS_NEEDED] buffer;
-        
-        void test(string expected, AnsiStyle style)
+        static if(!BetterC)
         {
-            const slice = style.toSequence(buffer);
-            assert(slice == expected, "Got '"~slice~"' wanted '"~expected~"'");
-        }
+            char[AnsiStyle.MAX_CHARS_NEEDED] buffer;
+            
+            void test(string expected, AnsiStyle style)
+            {
+                const slice = style.toSequence(buffer);
+                assert(slice == expected, "Got '"~slice~"' wanted '"~expected~"'");
+            }
 
-        test("", AnsiStyle.init);
-        test("1;2;3", AnsiStyle.init.bold.dim.italic);
+            test("", AnsiStyle.init);
+            test("1;2;3", AnsiStyle.init.bold.dim.italic);
+        }
     }
 }
 
@@ -1114,81 +1117,84 @@ struct AnsiTextLite
 @("AnsiTextLite")
 unittest
 {
-    auto text = "Hello!".ansiLite
-                        .fg(Ansi4BitColour.green)
-                        .bg(AnsiRgbColour(128, 128, 128))
-                        .style(AnsiStyle.init.bold.underline);
-
-    // Usage 1: Manually
-    import core.stdc.stdio : printf;
-    import std.stdio : writeln, write;
-    version(JANSI_TestOutput) // Just so test output isn't clogged. This still shows you how to use things though.
+    static if(!BetterC)
     {
-        char[AnsiTextLite.MAX_CHARS_NEEDED + 1] startSequence; // + 1 for null terminator.
-        const sliceFromStartSequence = text.toFullStartSequence(startSequence[0..AnsiTextLite.MAX_CHARS_NEEDED]);
-        startSequence[sliceFromStartSequence.length] = '\0';
+        auto text = "Hello!".ansiLite
+                            .fg(Ansi4BitColour.green)
+                            .bg(AnsiRgbColour(128, 128, 128))
+                            .style(AnsiStyle.init.bold.underline);
 
-        char[200] textBuffer;
-        textBuffer[0..text.text.length] = text.text[];
-        textBuffer[text.text.length] = '\0';
-
-        char[ANSI_COLOUR_RESET.length + 1] endSequence;
-        endSequence[0..ANSI_COLOUR_RESET.length] = text.toFullEndSequence()[];
-        endSequence[$-1] = '\0';
-
-        printf("%s%s%s\n", startSequence.ptr, textBuffer.ptr, endSequence.ptr);
-    }
-
-    // Usage 2: Range (RETURNS STACK MEMORY, DO NOT ALLOW SLICES TO OUTLIVE RANGE OBJECT WITHOUT EXPLICIT COPY)
-    version(JANSI_TestOutput)
-    {
-        // -betterC
-        foreach(slice; text.toRange)
+        // Usage 1: Manually
+        import core.stdc.stdio : printf;
+        import std.stdio : writeln, write;
+        version(JANSI_TestOutput) // Just so test output isn't clogged. This still shows you how to use things though.
         {
-            char[200] buffer;
-            buffer[0..slice.length] = slice[];
-            buffer[slice.length] = '\0';
-            printf("%s", buffer.ptr);
+            char[AnsiTextLite.MAX_CHARS_NEEDED + 1] startSequence; // + 1 for null terminator.
+            const sliceFromStartSequence = text.toFullStartSequence(startSequence[0..AnsiTextLite.MAX_CHARS_NEEDED]);
+            startSequence[sliceFromStartSequence.length] = '\0';
+
+            char[200] textBuffer;
+            textBuffer[0..text.text.length] = text.text[];
+            textBuffer[text.text.length] = '\0';
+
+            char[ANSI_COLOUR_RESET.length + 1] endSequence;
+            endSequence[0..ANSI_COLOUR_RESET.length] = text.toFullEndSequence()[];
+            endSequence[$-1] = '\0';
+
+            printf("%s%s%s\n", startSequence.ptr, textBuffer.ptr, endSequence.ptr);
         }
-        printf("\n");
 
-        // GC
-        foreach(slice; text.toRange)
-            write(slice);
-        writeln();
-    }
-    
-    // Usage 3: toString (Sink-based, so AnsiTextLite doesn't allocate, but writeln/the sink might)
-    version(JANSI_TestOutput)
-    {
-        writeln(text); // Calls the sink-based .toString();
-    }
-
-    // Usage 4: toString (non-sink, non-betterc only)
-    version(JANSI_TestOutput)
-    {
-        writeln(text.toString());
-    }
-
-    // Usage 5: toSink
-    version(JANSI_TestOutput)
-    {
-        struct CustomOutputRange
+        // Usage 2: Range (RETURNS STACK MEMORY, DO NOT ALLOW SLICES TO OUTLIVE RANGE OBJECT WITHOUT EXPLICIT COPY)
+        version(JANSI_TestOutput)
         {
-            char[] output;
-            @safe
-            void put(const(char)[] slice) nothrow
+            // -betterC
+            foreach(slice; text.toRange)
             {
-                const start = output.length;
-                output.length += slice.length;
-                output[start..$] = slice[];
+                char[200] buffer;
+                buffer[0..slice.length] = slice[];
+                buffer[slice.length] = '\0';
+                printf("%s", buffer.ptr);
             }
+            printf("\n");
+
+            // GC
+            foreach(slice; text.toRange)
+                write(slice);
+            writeln();
+        }
+        
+        // Usage 3: toString (Sink-based, so AnsiTextLite doesn't allocate, but writeln/the sink might)
+        version(JANSI_TestOutput)
+        {
+            writeln(text); // Calls the sink-based .toString();
         }
 
-        CustomOutputRange sink;
-        ()@safe nothrow{ text.toSink(sink); }();
-        
-        writeln(sink.output);
+        // Usage 4: toString (non-sink, non-betterc only)
+        version(JANSI_TestOutput)
+        {
+            writeln(text.toString());
+        }
+
+        // Usage 5: toSink
+        version(JANSI_TestOutput)
+        {
+            struct CustomOutputRange
+            {
+                char[] output;
+                @safe
+                void put(const(char)[] slice) nothrow
+                {
+                    const start = output.length;
+                    output.length += slice.length;
+                    output[start..$] = slice[];
+                }
+            }
+
+            CustomOutputRange sink;
+            ()@safe nothrow{ text.toSink(sink); }();
+            
+            writeln(sink.output);
+        }
     }
 }
 
@@ -1369,33 +1375,36 @@ private template TestAnsiTextImpl(alias TextT)
 @("AnsiText.toString - Autogenerated GC-based")
 unittest
 {
-    import std.format : format;
-
-    void genericTest(AnsiTextT)(auto ref AnsiTextT text)
+    static if(!BetterC)
     {
-        text.put("Hello, ");
-        text.put("Wor", AnsiColour(1, 2, 3), AnsiColour(3, 2, 1), AnsiStyle.init.bold.underline);
-        text.put("ld!", AnsiColour(Ansi4BitColour.green));
+        import std.format : format;
 
-        auto str      = text.toString();
-        auto expected = "\033[0mHello, \033[0;38;2;1;2;3;48;2;3;2;1;1;4mWor\033[0;32mld!\033[0m";
-
-        assert(
-            str == expected, 
-            "Got is %s chars long. Expected is %s chars long\nGot: %s\nExp: %s".format(str.length, expected.length, [str], [expected])
-        );
-
-        version(JANSI_TestOutput)
+        void genericTest(AnsiTextT)(auto ref AnsiTextT text)
         {
-            import std.stdio, std.traits;
-            static if(isCopyable!AnsiTextT)
-                writeln(text);
-        }
-    }
+            text.put("Hello, ");
+            text.put("Wor", AnsiColour(1, 2, 3), AnsiColour(3, 2, 1), AnsiStyle.init.bold.underline);
+            text.put("ld!", AnsiColour(Ansi4BitColour.green));
 
-    genericTest(AnsiTextGC.init);
-    genericTest(AnsiTextMalloc.init);
-    genericTest(AnsiTextStack!100.init);
+            auto str      = text.toString();
+            auto expected = "\033[0mHello, \033[0;38;2;1;2;3;48;2;3;2;1;1;4mWor\033[0;32mld!\033[0m";
+
+            assert(
+                str == expected, 
+                "Got is %s chars long. Expected is %s chars long\nGot: %s\nExp: %s".format(str.length, expected.length, [str], [expected])
+            );
+
+            version(JANSI_TestOutput)
+            {
+                import std.stdio, std.traits;
+                static if(isCopyable!AnsiTextT)
+                    writeln(text);
+            }
+        }
+
+        genericTest(AnsiTextGC.init);
+        genericTest(AnsiTextMalloc.init);
+        genericTest(AnsiTextStack!100.init);
+    }
 }
 
 static if(!BetterC)
@@ -1739,43 +1748,202 @@ string ansiExecuteSgrSequence(const(char)[] input, ref AnsiStyleSet style, out s
 @("ansiExecuteSgrSequence")
 unittest
 {
-    import std.conv : to;
-    import std.traits : EnumMembers;
-
-    void test(AnsiStyleSet sourceAndExpected)
+    static if(!BetterC)
     {
-        char[AnsiStyleSet.MAX_CHARS_NEEDED] buffer;
-        const sequence = ANSI_CSI~sourceAndExpected.toSequence(buffer)~ANSI_COLOUR_END;
+        import std.conv : to;
+        import std.traits : EnumMembers;
 
-        AnsiStyleSet got;
-        size_t charsRead;
-        const error = ansiExecuteSgrSequence(sequence, got, charsRead);
-        if(error !is null)
-            assert(false, error);
+        void test(AnsiStyleSet sourceAndExpected)
+        {
+            char[AnsiStyleSet.MAX_CHARS_NEEDED] buffer;
+            const sequence = ANSI_CSI~sourceAndExpected.toSequence(buffer)~ANSI_COLOUR_END;
 
-        assert(charsRead == sequence.length, "Read "~charsRead.to!string~" not "~sequence.length.to!string);
-        assert(sourceAndExpected == got, "Expected "~sourceAndExpected.to!string~" got "~got.to!string);
+            AnsiStyleSet got;
+            size_t charsRead;
+            const error = ansiExecuteSgrSequence(sequence, got, charsRead);
+            if(error !is null)
+                assert(false, error);
+
+            assert(charsRead == sequence.length, "Read "~charsRead.to!string~" not "~sequence.length.to!string);
+            assert(sourceAndExpected == got, "Expected "~sourceAndExpected.to!string~" got "~got.to!string);
+        }
+
+        test(AnsiStyleSet.init.fg(Ansi4BitColour.green));
+        test(AnsiStyleSet.init.fg(Ansi4BitColour.brightGreen));
+        test(AnsiStyleSet.init.bg(Ansi4BitColour.green));
+        test(AnsiStyleSet.init.bg(Ansi4BitColour.brightGreen));
+        test(AnsiStyleSet.init.fg(Ansi4BitColour.green).bg(Ansi4BitColour.brightRed));
+
+        test(AnsiStyleSet.init.fg(20));
+        test(AnsiStyleSet.init.bg(40));
+        test(AnsiStyleSet.init.fg(20).bg(40));
+
+        test(AnsiStyleSet.init.fg(AnsiRgbColour(255, 128, 64)));
+        test(AnsiStyleSet.init.bg(AnsiRgbColour(255, 128, 64)));
+        test(AnsiStyleSet.init.fg(AnsiRgbColour(255, 128, 64)).bg(AnsiRgbColour(64, 128, 255)));
+        
+        static foreach(member; EnumMembers!AnsiSgrStyle)
+        static if(member != AnsiSgrStyle.none)
+            test(AnsiStyleSet.init.style(AnsiStyle.init.set(member, true)));
+
+        test(AnsiStyleSet.init.style(AnsiStyle.init.bold.underline.slowBlink.italic));
+    }
+}
+
+/++
+ + The resulting object from `AnsiSectionRange`, describes whether a slice of text is an ANSI sequence or not.
+ + ++/
+struct AnsiSection
+{
+    /// `true` if the slice is an ANSI sequence, `false` if it's just text.
+    bool isAnsiSequence;
+
+    /// The slice of text that this section consists of.
+    const(char)[] slice;
+}
+
+/++
+ + An input range of `AnsiSection`s that splits a piece of text up into ANSI sequence and plain text sections.
+ +
+ + For example, the text "\033[37mABC\033[0m" has three sections: [ANSI "\033[37m", TEXT "ABC", ANSI "\033[0m"].
+ + ++/
+struct AnsiSectionRange
+{
+    private
+    {
+        const(char)[] _input;
+        size_t        _cursor;
+        AnsiSection   _front;
+        bool          _empty = true; // So .init.empty is true
+    }
+    
+    @safe @nogc nothrow pure:
+
+    ///
+    this(const(char)[] input)
+    {
+        this._input = input;
+        this._empty = false;
+        this.popFront();
     }
 
-    test(AnsiStyleSet.init.fg(Ansi4BitColour.green));
-    test(AnsiStyleSet.init.fg(Ansi4BitColour.brightGreen));
-    test(AnsiStyleSet.init.bg(Ansi4BitColour.green));
-    test(AnsiStyleSet.init.bg(Ansi4BitColour.brightGreen));
-    test(AnsiStyleSet.init.fg(Ansi4BitColour.green).bg(Ansi4BitColour.brightRed));
-
-    test(AnsiStyleSet.init.fg(20));
-    test(AnsiStyleSet.init.bg(40));
-    test(AnsiStyleSet.init.fg(20).bg(40));
-
-    test(AnsiStyleSet.init.fg(AnsiRgbColour(255, 128, 64)));
-    test(AnsiStyleSet.init.bg(AnsiRgbColour(255, 128, 64)));
-    test(AnsiStyleSet.init.fg(AnsiRgbColour(255, 128, 64)).bg(AnsiRgbColour(64, 128, 255)));
+    ///
+    bool empty() const
+    {
+        return this._empty;
+    }
     
-    static foreach(member; EnumMembers!AnsiSgrStyle)
-    static if(member != AnsiSgrStyle.none)
-        test(AnsiStyleSet.init.style(AnsiStyle.init.set(member, true)));
+    ///
+    AnsiSection front() const
+    {
+        return this._front;
+    }
 
-    test(AnsiStyleSet.init.style(AnsiStyle.init.bold.underline.slowBlink.italic));
+    ///
+    void popFront()
+    {
+        assert(!this.empty, "Cannot pop empty range.");
+
+        if(this._cursor >= this._input.length)
+        {
+            this._empty = true;
+            return;
+        }
+
+        if((this._input.length - this._cursor) >= ANSI_CSI.length 
+        && this._input[this._cursor..this._cursor + ANSI_CSI.length] == ANSI_CSI)
+            this.readSequence();
+        else
+            this.readText();
+    }
+
+    private void readText()
+    {
+        const start = this._cursor;
+        
+        while(this._cursor < this._input.length)
+        {
+            if((this._input.length - this._cursor) >= 2 && this._input[this._cursor..this._cursor+2] == ANSI_CSI)
+                break;
+
+            this._cursor++;
+        }
+
+        this._front.isAnsiSequence = false;
+        this._front.slice = this._input[start..this._cursor];
+    }
+
+    private void readSequence()
+    {
+        const start = this._cursor;
+        this._cursor += ANSI_CSI.length; // Already validated by popFront.
+
+        while(this._cursor < this._input.length 
+           && this.isValidAnsiChar(this._input[this._cursor]))
+           this._cursor++;
+
+        if(this._cursor < this._input.length)
+            this._cursor++; // We've hit a non-ansi character, so we increment to include it in the output.
+
+        this._front.isAnsiSequence = true;
+        this._front.slice = this._input[start..this._cursor];
+    }
+
+    private bool isValidAnsiChar(char ch)
+    {
+        return (
+            (ch >= '0' && ch <= '9')
+         || ch == ';'
+        );
+    }
+}
+///
+@("AnsiSectionRange")
+unittest
+{
+    assert(AnsiSectionRange.init.empty);
+    assert("".asAnsiSections.empty);
+
+    auto r = "No Ansi".asAnsiSections;
+    assert(!r.empty);
+    assert(!r.front.isAnsiSequence);
+    assert(r.front.slice == "No Ansi");
+
+    r = "\033[m".asAnsiSections;
+    assert(!r.empty);
+    assert(r.front.isAnsiSequence);
+    assert(r.front.slice == "\033[m");
+
+    r = "\033[38;2;255;128;64;1;4;48;5;2m".asAnsiSections;
+    assert(!r.empty);
+    assert(r.front.isAnsiSequence);
+    assert(r.front.slice == "\033[38;2;255;128;64;1;4;48;5;2m");
+
+    r = "\033[mABC\033[m".asAnsiSections;
+    assert(r.front.isAnsiSequence);
+    assert(r.front.slice == "\033[m", r.front.slice);
+    r.popFront();
+    assert(!r.empty);
+    assert(!r.front.isAnsiSequence);
+    assert(r.front.slice == "ABC", r.front.slice);
+    r.popFront();
+    assert(!r.empty);
+    assert(r.front.isAnsiSequence);
+    assert(r.front.slice == "\033[m");
+    r.popFront();
+    assert(r.empty);
+
+    r = "ABC\033[mDEF".asAnsiSections;
+    assert(!r.front.isAnsiSequence);
+    assert(r.front.slice == "ABC");
+    r.popFront();
+    assert(r.front.isAnsiSequence);
+    assert(r.front.slice == "\033[m");
+    r.popFront();
+    assert(!r.front.isAnsiSequence);
+    assert(r.front.slice == "DEF");
+    r.popFront();
+    assert(r.empty);
 }
 
 /+++ PUBLIC HELPERS +++/
@@ -1873,6 +2041,15 @@ unittest
 }
 
 /++
+ + Constructs an `AnsiSectionRange` from the given `slice`.
+ + ++/
+@safe @nogc
+AnsiSectionRange asAnsiSections(const(char)[] slice) nothrow pure
+{
+    return AnsiSectionRange(slice);
+}
+
+/++
  + Enables ANSI support on windows via `SetConsoleMode`. This function is no-op on non-Windows platforms.
  + ++/
 void ansiEnableWindowsSupport()
@@ -1943,8 +2120,7 @@ private NumT strToNum(NumT)(const(char)[] slice)
 @("strToNum")
 unittest
 {
-    import std.conv : to;
-    assert("1".strToNum!int == 1, "1".strToNum!int.to!string);
-    assert("11".strToNum!int == 11, "11".strToNum!int.to!string);
+    assert("1".strToNum!int == 1);
+    assert("11".strToNum!int == 11);
     assert("901".strToNum!int == 901);
 }
