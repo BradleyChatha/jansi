@@ -1371,7 +1371,7 @@ unittest
 {
     import std.format : format;
 
-    void genericTest(AnsiTextT)(AnsiTextT text)
+    void genericTest(AnsiTextT)(auto ref AnsiTextT text)
     {
         text.put("Hello, ");
         text.put("Wor", AnsiColour(1, 2, 3), AnsiColour(3, 2, 1), AnsiStyle.init.bold.underline);
