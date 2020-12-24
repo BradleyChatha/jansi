@@ -873,6 +873,309 @@ enum AnsiTextImplementationFeatures
 }
 
 /++
+ + A lightweight alternative to `AnsiText` which only supports a singular coloured string, at the cost
+ + of removing most of the other complexity & dynamic allocation needs of `AnsiText`.
+ +
+ + If you only need to style your string in one certain way, or want to avoid `AnsiText` altogether, then this struct
+ + is the way to go.
+ +
+ + Usage_(Manually):
+ +  First, retrieve and the ANSI styling sequence via `AnsiTextLite.toFullStartSequence` and output it.
+ +
+ +  Second, output `AnsiTextLite.text`.
+ +
+ +  Finally, and optionally, retrieve the ANSI reset sequence via `AnsiTextLite.toFullEndSequence` and output it.
+ +
+ + Usage_(Range):
+ +  Call `AnsiTextLite.toRange` to get the range, please read its documentation as it is important (it'll return slices to stack-allocated memory).
+ +
+ + Usage_(GC):
+ +  If you're not compiling under `-betterc`, then `AnsiTextLite.toString()` will provide you with a GC-allocated string containing:
+ +  the start ANSI sequence; the text to display; and the end ANSI sequence. i.e. A string that is just ready to be printed.
+ +
+ +  This struct also implements the sink-based version of `toString`, which means when used directly with things like `writeln`, this struct
+ +  is able to avoid allocations (unless the sink itself allocates). See the unittest for an example.
+ +
+ + See_Also:
+ +  `ansiLite` for fluent creation of an `AnsiTextLite`.
+ +
+ +  This struct's unittest for an example of usage.
+ + ++/
+struct AnsiTextLite
+{
+    /++
+     + The maximum amount of chars required by the start sequence of an `AnsiTextLite` (`toFullStartSequence`).
+     + ++/
+    enum MAX_CHARS_NEEDED = AnsiStyleSet.MAX_CHARS_NEEDED + ANSI_CSI.length + 1; // + 1 for the ANSI_COLOUR_END
+
+    /// The text to output.
+    const(char)[] text;
+    
+    /// The styling to apply to the text.
+    AnsiStyleSet styleSet;
+
+    /+++ SETTERS +++/
+    // TODO: Should probably make a mixin template for this, but I need to see how the documentation generators handle that.
+    //       I also can't just do an `alias this`, as otherwise the style functions wouldn't return `AnsiTextLite`, but instead `AnsiStyleSet`.
+    //       Or just suck it up and make some of the setters templatised, much to the dismay of documentation.
+    @safe @nogc nothrow
+    {
+        ///
+        AnsiTextLite fg(AnsiColour colour) return { this.styleSet.fg = colour; this.styleSet.fg.isBg = IsBgColour.no; return this; }
+        ///
+        AnsiTextLite fg(Ansi4BitColour colour) return { return this.fg(AnsiColour(colour)); }
+        ///
+        AnsiTextLite fg(Ansi8BitColour colour) return { return this.fg(AnsiColour(colour)); }
+        ///
+        AnsiTextLite fg(AnsiRgbColour colour) return { return this.fg(AnsiColour(colour)); }
+
+        ///
+        AnsiTextLite bg(AnsiColour colour) return { this.styleSet.bg = colour; this.styleSet.bg.isBg = IsBgColour.yes; return this; }
+        ///
+        AnsiTextLite bg(Ansi4BitColour colour) return { return this.bg(AnsiColour(colour)); }
+        ///
+        AnsiTextLite bg(Ansi8BitColour colour) return { return this.bg(AnsiColour(colour)); }
+        ///
+        AnsiTextLite bg(AnsiRgbColour colour) return { return this.bg(AnsiColour(colour)); }
+        ///
+
+        ///
+        AnsiTextLite chainStyle(AnsiStyle style) return { this.styleSet.style = style; return this; }
+    }
+
+    @safe @nogc nothrow const
+    {
+        /++
+         + Populates the given buffer with the full ANSI sequence needed to enable the styling
+         + defined within this `AnsiTextLite`
+         +
+         + Unlike the usual `toSequence` functions, this function includes the `ANSI_CSI` and `ANSI_COLOUR_END` markers,
+         + meaning the output from this function is ready to be printed as-is.
+         +
+         + Do note that this function doesn't insert a null-terminator, so if you're using anything based on C strings, you need
+         + to insert that yourself.
+         +
+         + Notes:
+         +  Any parts of the `buffer` that are not populated by this function are left untouched.
+         +
+         + Params:
+         +  buffer = The buffer to populate.
+         +
+         + Returns:
+         +  The slice of `buffer` that has been populated.
+         + ++/
+        char[] toFullStartSequence(ref return char[MAX_CHARS_NEEDED] buffer)
+        {
+            size_t cursor;
+
+            buffer[0..ANSI_CSI.length] = ANSI_CSI[];
+            cursor += ANSI_CSI.length;
+
+            char[AnsiStyleSet.MAX_CHARS_NEEDED] styleBuffer;
+            const styleSlice = this.styleSet.toSequence(styleBuffer);
+            buffer[cursor..cursor+styleSlice.length] = styleSlice[];
+            cursor += styleSlice.length;
+
+            buffer[cursor++] = ANSI_COLOUR_END;
+
+            return buffer[0..cursor];
+        }
+
+        /++
+         + Returns:
+         +  The end ANSI sequence for `AnsiTextLite`, which is simply a statically allocated version of the `ANSI_COLOUR_RESET` constant.
+         + ++/
+        char[ANSI_COLOUR_RESET.length] toFullEndSequence()
+        {
+            typeof(return) buffer;
+            buffer[0..$] = ANSI_COLOUR_RESET[];
+            return buffer;
+        }
+
+        /++
+         + Provides a range that returns, in this order: The start sequence (`.toFullStartSequence`); the output text (`.text`),
+         + and finally the end sequence (`.toFullEndSequence`).
+         +
+         + This range is $(B weakly-safe) as it $(B returns slices to stack memory) so please ensure that $(B any returned slices don't outlive the origin range object).
+         +
+         + Please also note that non of the returned slices contain null terminators.
+         +
+         + Returns:
+         +  An Input Range that returns all the slices required to correctly display this `AnsiTextLite` onto a console.
+         + ++/
+        auto toRange()
+        {
+            static struct Range
+            {
+                char[MAX_CHARS_NEEDED] start;
+                const(char)[] middle;
+                char[ANSI_COLOUR_RESET.length] end;
+                char[] startSlice;
+
+                size_t sliceCount;
+
+                @safe @nogc nothrow:
+
+                bool empty()
+                {
+                    return this.sliceCount >= 3;
+                }
+
+                void popFront()
+                {
+                    this.sliceCount++;
+                }
+
+                @trusted
+                const(char)[] front() return
+                {
+                    switch(sliceCount)
+                    {
+                        case 0: return this.startSlice;
+                        case 1: return this.middle;
+                        case 2: return this.end[0..$];
+                        default: assert(false, "Cannot use empty range.");
+                    }   
+                }
+            }
+
+            Range r;
+            r.startSlice = this.toFullStartSequence(r.start);
+            r.middle = this.text;
+            r.end = this.toFullEndSequence();
+
+            return r;
+        }
+    }
+
+    static if(!BetterC)
+    /++
+     + Notes:
+     +  This struct implements the sink-based `toString` which performs no allocations, so the likes of `std.stdio.writeln` will
+     +  automatically use the sink-based version if you pass this struct to it directly.
+     +
+     + Returns: 
+     +  A GC-allocated string containing this `AnsiTextLite` as an ANSI-encoded string, ready for printing.
+     + ++/
+    @trusted nothrow // @trusted due to .assumeUnique
+    string toString() const
+    {
+        import std.exception : assumeUnique;
+
+        char[MAX_CHARS_NEEDED] styleBuffer;
+        const styleSlice = this.toFullStartSequence(styleBuffer);
+
+        auto buffer = new char[styleSlice.length + this.text.length + ANSI_COLOUR_RESET.length];
+        buffer[0..styleSlice.length]                                  = styleSlice[];
+        buffer[styleSlice.length..styleSlice.length+this.text.length] = this.text[];
+        buffer[$-ANSI_COLOUR_RESET.length..$]                         = ANSI_COLOUR_RESET[];
+
+        return buffer.assumeUnique;
+    }
+
+    /++
+     + The sink-based version of `toString`, which doesn't allocate by itself unless the `sink` decides to allocate.
+     +
+     + Params:
+     +  sink = The sink to output into.
+     +
+     + See_Also:
+     +  `toSink` for a templatised version of this function which can infer attributes, and supports any form of Output Range instead of just a delegate.
+     + ++/
+    void toString(scope void delegate(const(char)[]) sink) const
+    {
+        this.toSink(sink);
+    }
+
+    /++
+     + Outputs in order: The start sequence (`.toFullStartSequence`), the output text (`.text`), and the end sequence (`.toFullEndSequence`)
+     + into the given `sink`.
+     +
+     + This function by itself does not allocate memory.
+     +
+     + This function will infer attributes, so as to be used in whatever attribute-souped environment your sink supports.
+     +
+     + $(B Please read the warnings described in `.toRange`) TLDR; don't persist the slices given to the sink under any circumstance. You must
+     + copy the data as soon as you get it.
+     +
+     + Params:
+     +  sink = The sink to output into.
+     + ++/
+    void toSink(Sink)(scope Sink sink) const
+    {
+        foreach(slice; this.toRange())
+            sink(slice);
+    }
+}
+///
+@("AnsiTextLite")
+unittest
+{
+    auto text = "Hello!".ansiLite
+                        .fg(Ansi4BitColour.green)
+                        .bg(AnsiRgbColour(128, 128, 128))
+                        .chainStyle(AnsiStyle.init.bold.underline);
+
+    // Usage 1: Manually
+    import core.stdc.stdio : printf;
+    version(JANSI_TestOutput) // Just so test output isn't clogged. This still shows you how to use things though.
+    {
+        char[AnsiTextLite.MAX_CHARS_NEEDED + 1] startSequence; // + 1 for null terminator.
+        const sliceFromStartSequence = text.toFullStartSequence(startSequence[0..AnsiTextLite.MAX_CHARS_NEEDED]);
+        startSequence[sliceFromStartSequence.length] = '\0';
+
+        char[200] textBuffer;
+        textBuffer[0..text.text.length] = text.text[];
+        textBuffer[text.text.length] = '\0';
+
+        char[ANSI_COLOUR_RESET.length + 1] endSequence;
+        endSequence[0..ANSI_COLOUR_RESET.length] = text.toFullEndSequence()[];
+        endSequence[$-1] = '\0';
+
+        printf("%s%s%s\n", startSequence.ptr, textBuffer.ptr, endSequence.ptr);
+    }
+
+    // Usage 2: Range (RETURNS STACK MEMORY, DO NOT ALLOW SLICES TO OUTLIVE RANGE OBJECT WITHOUT EXPLICIT COPY)
+    version(JANSI_TestOutput)
+    {
+        // -betterC
+        foreach(slice; text.toRange)
+        {
+            char[200] buffer;
+            buffer[0..slice.length] = slice[];
+            buffer[slice.length] = '\0';
+            printf("%s", buffer.ptr);
+        }
+        printf("\n");
+
+        // GC
+        import std.stdio;
+        foreach(slice; text.toRange)
+            write(slice);
+        writeln();
+    }
+    
+    // Usage 3: toString (Sink-based, so AnsiTextLite doesn't allocate, but writeln/the sink might)
+    version(JANSI_TestOutput)
+    {
+        import std.stdio;
+        writeln(text); // Calls the sink-based .toString();
+    }
+
+    // Usage 4: toString (non-sink, non-betterc only)
+    version(JANSI_TestOutput)
+    {
+        import std.stdio;
+        writeln(text.toString());
+    }
+}
+
+AnsiTextLite ansiLite(const(char)[] text)
+{
+    return AnsiTextLite(text);
+}
+
+/++
  + Contains a string that supports the ability for different parts of the string to be styled seperately.
  +
  + This struct is highly flexible and dynamic, as it requires the use of external code to provide some
@@ -892,9 +1195,6 @@ enum AnsiTextImplementationFeatures
  +  For example: `enum Features = AnsiTextImplementationFeatures.xxx`
  +
  +  Builtin implementations consist of `AnsiTextGC` (not enabled with -betterC), `AnsiTextStack`, and `AnsiTextMalloc`, which are self-descriptive.
- +
- +  If the implementation mixin requires additional compile-time parameters, you can pass them into `AnsiText`'s `MixinArgs` template parameter, and it'll
- +  forward them through.
  +
  + Basic_Implemetations:
  +  An implementation that doesn't require anything noteworthy from `AnsiText` itself should define their features as `AnsiTextImplementationFeatures.basic`.
@@ -932,9 +1232,9 @@ enum AnsiTextImplementationFeatures
  }
  +  ```
  + ++/
-struct AnsiText(alias ImplementationMixin, MixinArgs...)
+struct AnsiText(alias ImplementationMixin)
 {
-    mixin ImplementationMixin!MixinArgs;
+    mixin ImplementationMixin;
     alias ___TEST = TestAnsiTextImpl!(typeof(this));
 
     void put()(const(char)[] text, AnsiColour fg = AnsiColour.init, AnsiColour bg = AnsiColour.bgInit, AnsiStyle style = AnsiStyle.init)
@@ -1067,7 +1367,7 @@ static if(!BetterC)
             return this._slices[$-1];
         }
 
-        void toSink(Sink)(ref Sink sink)
+        void toSink(Sink)(ref scope Sink sink)
         if(isOutputRange!(Sink, char[]))
         {
             foreach(slice; this._slices)
@@ -1122,7 +1422,7 @@ mixin template AnsiTextMallocImplementation()
         return slice;
     }
 
-    void toSink(Sink)(ref Sink sink)
+    void toSink(Sink)(ref scope Sink sink)
     if(isOutputRange!(Sink, char[]))
     {
         foreach(slice; this._slices)
@@ -1142,45 +1442,48 @@ mixin template AnsiTextMallocImplementation()
 alias AnsiTextMalloc = AnsiText!AnsiTextMallocImplementation;
 
 ///
-mixin template AnsiTextStackImplementation(size_t Capacity)
+template AnsiTextStackImplementation(size_t Capacity)
 {
-    enum Features = AnsiTextImplementationFeatures.basic;
-
-    private char[Capacity] _output;
-    private size_t _cursor;
-
-    // This code by itself is *technically* safe, but the way the user uses it might not be.
-
-    @safe @nogc
-    char[] newSlice(size_t minLength) nothrow
+    mixin template AnsiTextStackImplementation()
     {
-        const end = this._cursor + minLength;
-        assert(end <= this._output.length, "Ran out of space.");
+        enum Features = AnsiTextImplementationFeatures.basic;
 
-        auto slice = this._output[this._cursor..end];
-        this._cursor = end;
+        private char[Capacity] _output;
+        private size_t _cursor;
 
-        return slice;
-    }
+        // This code by itself is *technically* safe, but the way the user uses it might not be.
 
-    void toSink(Sink)(ref Sink sink)
-    if(isOutputRange!(Sink, char[]))
-    {
-        sink.put(this.asStackSlice);
-        sink.put(ANSI_COLOUR_RESET);
-    }
+        @safe @nogc
+        char[] newSlice(size_t minLength) nothrow
+        {
+            const end = this._cursor + minLength;
+            assert(end <= this._output.length, "Ran out of space.");
 
-    @safe @nogc
-    char[] asStackSlice() nothrow
-    {
-        return this._output[0..this._cursor];    
-    }
+            auto slice = this._output[this._cursor..end];
+            this._cursor = end;
 
-    @safe @nogc
-    char[Capacity] asStackSliceCopy(ref size_t lengthInUse) nothrow
-    {
-        lengthInUse = this._cursor;
-        return this._output;
+            return slice;
+        }
+
+        void toSink(Sink)(ref Sink sink)
+        if(isOutputRange!(Sink, char[]))
+        {
+            sink.put(this.asStackSlice);
+            sink.put(ANSI_COLOUR_RESET);
+        }
+
+        @safe @nogc
+        char[] asStackSlice() nothrow
+        {
+            return this._output[0..this._cursor];    
+        }
+
+        @safe @nogc
+        char[Capacity] asStackSliceCopy(ref size_t lengthInUse) nothrow
+        {
+            lengthInUse = this._cursor;
+            return this._output;
+        }
     }
 }
 
@@ -1195,7 +1498,7 @@ mixin template AnsiTextStackImplementation(size_t Capacity)
  + Params:
  +  Capacity = The amount of characters to use on the stack.
  + ++/
-alias AnsiTextStack(size_t Capacity) = AnsiText!(AnsiTextStackImplementation, Capacity);
+alias AnsiTextStack(size_t Capacity) = AnsiText!(AnsiTextStackImplementation!Capacity);
 
 /+++ PUBLIC HELPERS +++/
 

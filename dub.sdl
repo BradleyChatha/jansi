@@ -24,3 +24,8 @@ configuration "unittest-betterc-lite" {
     versions "JANSI_BetterC"
     dependency "silly" version="~>1.0.2"
 }
+
+configuration "unittest-print" {
+    versions "JANSI_TestOutput"
+    dependency "silly" version="~>1.0.2"
+}
