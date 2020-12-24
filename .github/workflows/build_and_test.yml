@@ -6,7 +6,9 @@ jobs:
   test:
     name: Build and Test
     runs-on: ubuntu-latest
-    matrix:
+    strategy:
+      fail-fast: true
+      matrix:
         dc: [ldc-latest, dmd-latest]
     steps:
       - name: Checkout code
