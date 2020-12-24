@@ -1548,6 +1548,236 @@ template AnsiTextStackImplementation(size_t Capacity)
  + ++/
 alias AnsiTextStack(size_t Capacity) = AnsiText!(AnsiTextStackImplementation!Capacity);
 
+/+++ READING/PARSING +++/
+
+/++
+ + Executes the SGR sequence found in `input`, and populates the passed in `style` based on the command sequence.
+ +
+ + Anything directly provided by this library is supported.
+ +
+ + The previous state of `style` is preserved unless specifically untoggled/reset via the command sequence (e.g. `ESC[0m` to reset everything).
+ +
+ + If an error occurs during execution of the sequence, the given `style` is left completely unmodified.
+ +
+ + Params:
+ +  input     = The slice containing the command sequence. The first character should be the start (`ANSI_CSI`) character of the sequence (`\033`), and
+ +              characters will continue to be read until the command sequence has been finished. Any characters after the command sequence are left unread.
+ +  style     = A reference to an `AnsiStyleSet` to populate. As mentioned, this function will only untoggle styling, or reset the style if the command sequence specifies.
+ +              This value is left unmodified if an error is encountered.
+ +  charsRead = This value will be set to the amount of chars read from the given `input`, so the caller knows where to continue reading from (if applicable).
+ +              This value is populated on both error and success.
+ +
+ + Returns:
+ +  Either `null` on success, or a string describing the error that was encountered.
+ + ++/
+@safe @nogc
+string ansiExecuteSgrSequence(const(char)[] input, ref AnsiStyleSet style, out size_t charsRead) nothrow
+{
+    import std.traits : EnumMembers;
+
+    enum ReadResult { foundEndMarker, foundSemiColon, foundEnd, foundBadCharacter }
+
+    if(input.length < 3)
+        return "A valid SGR is at least 3 characters long: ESC[m";
+
+    if(input[0..ANSI_CSI.length] != ANSI_CSI)
+        return "Input does not start with the CSI: ESC[";
+
+    auto styleCopy = style;
+
+    charsRead = 2;
+    ReadResult readToSemiColonOrEndMarker(ref const(char)[] slice)
+    {
+        const start = charsRead;
+        while(true)
+        {
+            if(charsRead >= input.length)
+                return ReadResult.foundEnd;
+
+            const ch = input[charsRead];
+            if(ch == 'm')
+            {
+                slice = input[start..charsRead];
+                return ReadResult.foundEndMarker;
+            }
+            else if(ch == ';')
+            {
+                slice = input[start..charsRead];
+                return ReadResult.foundSemiColon;
+            }
+            else if(ch >= '0' && ch <= '9')
+            {
+                charsRead++;
+                continue;
+            }
+            else
+                return ReadResult.foundBadCharacter;
+        }
+    }
+
+    int toValue(const(char)[] slice)
+    {
+        return (slice.length == 0) ? 0 : slice.strToNum!int;
+    }
+
+    string resultToString(ReadResult result)
+    {
+        final switch(result) with(ReadResult)
+        {
+            case foundEnd: return "Unexpected end of input.";
+            case foundBadCharacter: return "Unexpected character in input.";
+
+            case foundSemiColon: return "Unexpected semi-colon.";
+            case foundEndMarker: return "Unexpected end marker ('m').";
+        }
+    }
+
+    const(char)[] generalSlice;
+    while(charsRead < input.length)
+    {
+        const ch = input[charsRead];
+
+        switch(ch)
+        {
+            case '0':..case '9':
+                auto result = readToSemiColonOrEndMarker(generalSlice);
+                if(result != ReadResult.foundSemiColon && result != ReadResult.foundEndMarker)
+                    return resultToString(result);
+
+                const commandAsNum = toValue(generalSlice);
+                Switch: switch(commandAsNum)
+                {
+                    // Full reset
+                    case 0: styleCopy = AnsiStyleSet.init; break;
+
+                    // Basic style flag setters.
+                    static foreach(member; EnumMembers!AnsiSgrStyle)
+                    {
+                        static if(member != AnsiSgrStyle.none)
+                        {
+                            case cast(int)member:
+                                styleCopy.style = styleCopy.style.set(member, true);
+                                break Switch;
+                        }
+                    }
+
+                    // Set foreground to a 4-bit colour.
+                    case 30:..case 37:
+                    case 90:..case 97:
+                        styleCopy.fg = cast(Ansi4BitColour)commandAsNum;
+                        break;
+
+                    // Set background to a 4-bit colour.
+                    case 40:..case 47:
+                    case 100:..case 107:
+                        styleCopy.bg = cast(Ansi4BitColour)(commandAsNum - ANSI_FG_TO_BG_INCREMENT); // Since we work in the foreground colour until we're outputting to sequences.
+                        break;
+                    
+                    // Set foreground (38) or background (48) to an 8-bit (5) or 24-bit (2) colour.
+                    case 38:
+                    case 48:
+                        if(result == ReadResult.foundEndMarker)
+                            return "Incomplete 'set foreground/background' command, expected another parameter, got none.";
+                        charsRead++; // Skip semi-colon.
+
+                        result = readToSemiColonOrEndMarker(generalSlice);
+                        if(result != ReadResult.foundEndMarker && result != ReadResult.foundSemiColon)
+                            return resultToString(result);
+                        if(result == ReadResult.foundSemiColon)
+                            charsRead++;
+
+                        const subcommand = toValue(generalSlice);
+                        if(subcommand == 5)
+                        {
+                            result = readToSemiColonOrEndMarker(generalSlice);
+                            if(result != ReadResult.foundEndMarker && result != ReadResult.foundSemiColon)
+                                return resultToString(result);
+                            if(result == ReadResult.foundSemiColon)
+                                charsRead++;
+
+                            if(commandAsNum == 38) styleCopy.fg = cast(Ansi8BitColour)toValue(generalSlice);
+                            else                   styleCopy.bg = cast(Ansi8BitColour)toValue(generalSlice);
+                        }
+                        else if(subcommand == 2)
+                        {
+                            ubyte[3] components;
+                            foreach(i; 0..3)
+                            {
+                                result = readToSemiColonOrEndMarker(generalSlice);
+                                if(result != ReadResult.foundEndMarker && result != ReadResult.foundSemiColon)
+                                    return resultToString(result);
+                                if(result == ReadResult.foundSemiColon)
+                                    charsRead++;
+
+                                components[i] = cast(ubyte)toValue(generalSlice);
+                            }
+
+                            if(commandAsNum == 38) styleCopy.fg = AnsiRgbColour(components);
+                            else                   styleCopy.bg = AnsiRgbColour(components);
+                        }
+                        else
+                            break; // Assume it's a valid command, just that we don't support this specific sub command.
+                        break;
+
+                    default: continue; // Assume it's just a command we don't support.
+                }
+                break;
+
+            case 'm':
+                charsRead++;
+                style = styleCopy;
+                return null;
+
+            case ';': charsRead++; continue;
+            default: return null; // Assume we've hit an end-marker we don't support.
+        }
+    }
+
+    return "Input did not contain an end marker.";
+}
+///
+@("ansiExecuteSgrSequence")
+unittest
+{
+    import std.conv : to;
+    import std.traits : EnumMembers;
+
+    void test(AnsiStyleSet sourceAndExpected)
+    {
+        char[AnsiStyleSet.MAX_CHARS_NEEDED] buffer;
+        const sequence = ANSI_CSI~sourceAndExpected.toSequence(buffer)~ANSI_COLOUR_END;
+
+        AnsiStyleSet got;
+        size_t charsRead;
+        const error = ansiExecuteSgrSequence(sequence, got, charsRead);
+        if(error !is null)
+            assert(false, error);
+
+        assert(charsRead == sequence.length, "Read "~charsRead.to!string~" not "~sequence.length.to!string);
+        assert(sourceAndExpected == got, "Expected "~sourceAndExpected.to!string~" got "~got.to!string);
+    }
+
+    test(AnsiStyleSet.init.fg(Ansi4BitColour.green));
+    test(AnsiStyleSet.init.fg(Ansi4BitColour.brightGreen));
+    test(AnsiStyleSet.init.bg(Ansi4BitColour.green));
+    test(AnsiStyleSet.init.bg(Ansi4BitColour.brightGreen));
+    test(AnsiStyleSet.init.fg(Ansi4BitColour.green).bg(Ansi4BitColour.brightRed));
+
+    test(AnsiStyleSet.init.fg(20));
+    test(AnsiStyleSet.init.bg(40));
+    test(AnsiStyleSet.init.fg(20).bg(40));
+
+    test(AnsiStyleSet.init.fg(AnsiRgbColour(255, 128, 64)));
+    test(AnsiStyleSet.init.bg(AnsiRgbColour(255, 128, 64)));
+    test(AnsiStyleSet.init.fg(AnsiRgbColour(255, 128, 64)).bg(AnsiRgbColour(64, 128, 255)));
+    
+    static foreach(member; EnumMembers!AnsiSgrStyle)
+    static if(member != AnsiSgrStyle.none)
+        test(AnsiStyleSet.init.style(AnsiStyle.init.set(member, true)));
+
+    test(AnsiStyleSet.init.style(AnsiStyle.init.bold.underline.slowBlink.italic));
+}
+
 /+++ PUBLIC HELPERS +++/
 
 /// Determines if `CT` is a valid RGB data type.
@@ -1689,4 +1919,32 @@ unittest
 {
     char[2] b;
     assert(numToStrBase10(b, 32) == "32");
+}
+
+private NumT strToNum(NumT)(const(char)[] slice)
+{
+    NumT num;
+
+    foreach(i, ch; slice)
+    {
+        const exponent = slice.length - (i + 1);
+        const tens     = 10 ^^ exponent;
+        const chNum    = cast(NumT)(ch - '0');
+
+        if(tens == 0)
+            num += chNum;
+        else
+            num += chNum * tens;
+    }
+
+    return num;
+}
+///
+@("strToNum")
+unittest
+{
+    import std.conv : to;
+    assert("1".strToNum!int == 1, "1".strToNum!int.to!string);
+    assert("11".strToNum!int == 11, "11".strToNum!int.to!string);
+    assert("901".strToNum!int == 901);
 }
