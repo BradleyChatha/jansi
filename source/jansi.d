@@ -755,8 +755,7 @@ struct AnsiStyleSet
 
     private AnsiColour _fg;
     private AnsiColour _bg;
-    /// The `AnsiStyle` to use.
-    AnsiStyle style;
+    private AnsiStyle _style;
 
     // As usual, functions are manually made for better documentation.
 
@@ -774,6 +773,7 @@ struct AnsiStyleSet
 
         ///
         AnsiStyleSet bg(AnsiColour colour) return { this._bg = colour; this._bg.isBg = IsBgColour.yes; return this; }
+        ///
         AnsiStyleSet bg(Ansi4BitColour colour) return { return this.bg(AnsiColour(colour)); }
         ///
         AnsiStyleSet bg(Ansi8BitColour colour) return { return this.bg(AnsiColour(colour)); }
@@ -782,7 +782,7 @@ struct AnsiStyleSet
         ///
 
         ///
-        AnsiStyleSet chainStyle(AnsiStyle style) return { this.style = style; return this; }
+        AnsiStyleSet style(AnsiStyle style) return { this._style = style; return this; }
     }
 
     /+++ GETTERS +++/
@@ -792,6 +792,8 @@ struct AnsiStyleSet
         AnsiColour fg() { return this._fg; }
         ///
         AnsiColour bg() { return this._bg; }
+        ///
+        AnsiStyle style() { return this._style; }
     }
 
     /+++ OUTPUT ++/
@@ -857,7 +859,7 @@ struct AnsiStyleSet
             AnsiStyleSet.init
                     .fg(Ansi4BitColour.green)
                     .bg(AnsiRgbColour(255, 128, 64))
-                    .chainStyle(AnsiStyle.init.bold.underline)
+                    .style(AnsiStyle.init.bold.underline)
         );
     }
 }
@@ -940,7 +942,7 @@ struct AnsiTextLite
         ///
 
         ///
-        AnsiTextLite chainStyle(AnsiStyle style) return { this.styleSet.style = style; return this; }
+        AnsiTextLite style(AnsiStyle style) return { this.styleSet.style = style; return this; }
     }
 
     @safe @nogc nothrow const
@@ -1115,7 +1117,7 @@ unittest
     auto text = "Hello!".ansiLite
                         .fg(Ansi4BitColour.green)
                         .bg(AnsiRgbColour(128, 128, 128))
-                        .chainStyle(AnsiStyle.init.bold.underline);
+                        .style(AnsiStyle.init.bold.underline);
 
     // Usage 1: Manually
     import core.stdc.stdio : printf;
@@ -1258,7 +1260,7 @@ struct AnsiText(alias ImplementationMixin)
         bg.isBg = IsBgColour.yes;
 
         char[AnsiStyleSet.MAX_CHARS_NEEDED] sequence;
-        auto sequenceSlice = AnsiStyleSet.init.fg(fg).bg(bg).chainStyle(style).toSequence(sequence);
+        auto sequenceSlice = AnsiStyleSet.init.fg(fg).bg(bg).style(style).toSequence(sequence);
 
         auto minLength = ANSI_CSI.length + sequenceSlice.length + /*ANSI_COLOUR_END*/1 + text.length + ((sequenceSlice.length > 0) ? 2 : 1); // Last one is for the '0' or '0;'
         char[] slice = this.newSlice(minLength);
@@ -1635,8 +1637,24 @@ unittest
         writeln("Hello, World!".ansiLite
                                .fg(Ansi4BitColour.red)
                                .bg(AnsiRgbColour(128, 128, 128))
-                               .chainStyle(AnsiStyle.init.bold.underline)
+                               .style(AnsiStyle.init.bold.underline)
         );
+    }
+}
+
+/++
+ + Enables ANSI support on windows via `SetConsoleMode`. This function is no-op on non-Windows platforms.
+ + ++/
+void ansiEnableWindowsSupport()
+{
+    version(Windows)
+    {
+        import core.sys.windows.windows : HANDLE, DWORD, GetStdHandle, STD_OUTPUT_HANDLE, GetConsoleMode, SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        DWORD mode = 0;
+        GetConsoleMode(stdOut, &mode);
+        mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        SetConsoleMode(stdOut, mode);
     }
 }
 
