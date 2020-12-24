@@ -12,7 +12,14 @@ version(JANSI_BetterC)
 }
 else
 {
-    private enum BetterC = false;
+    version(D_BetterC)
+    {
+        private enum BetterC = true;
+    }
+    else
+    {
+        private enum BetterC = false;
+    }
 }
 
 /// Used to determine if an `AnsiColour` is a background or foreground colour.
