@@ -35,7 +35,7 @@ alias Ansi8BitColour = ubyte;
 immutable ANSI_CSI                = "\033[";
 
 /// The character that delimits ANSI parameters.
-immutable ANSI_SEPERATOR          = ';';
+immutable ANSI_SEPARATOR          = ';';
 
 /// The character used to denote that the sequence is an SGR sequence.
 immutable ANSI_COLOUR_END         = 'm';
@@ -429,7 +429,7 @@ struct AnsiColour
             auto marker = (this.isBg) ? BG_MARKER : FG_MARKER;
             buffer[cursor..cursor+2] = marker[0..$];
             cursor += 2;
-            buffer[cursor++] = ANSI_SEPERATOR;
+            buffer[cursor++] = ANSI_SEPARATOR;
         }
 
         // 4bit, 5;8bit, or 2;r;g;b
@@ -442,18 +442,18 @@ struct AnsiColour
 
             case eightBit:
                 buffer[cursor++] = EIGHT_BIT_MARKER;
-                buffer[cursor++] = ANSI_SEPERATOR;
+                buffer[cursor++] = ANSI_SEPARATOR;
                 numIntoBuffer(this._value.eightBit);
                 break;
                 
             case rgb:
                 buffer[cursor++] = RGB_MARKER;
-                buffer[cursor++] = ANSI_SEPERATOR;
+                buffer[cursor++] = ANSI_SEPARATOR;
 
                 numIntoBuffer(this._value.rgb.r); 
-                buffer[cursor++] = ANSI_SEPERATOR;
+                buffer[cursor++] = ANSI_SEPARATOR;
                 numIntoBuffer(this._value.rgb.g); 
-                buffer[cursor++] = ANSI_SEPERATOR;
+                buffer[cursor++] = ANSI_SEPARATOR;
                 numIntoBuffer(this._value.rgb.b); 
                 break;
         }
@@ -716,7 +716,7 @@ struct AnsiStyle
             if(this.getSgrBit(flag))
             {
                 if(!isFirstValue)
-                    buffer[cursor++] = ANSI_SEPERATOR;
+                    buffer[cursor++] = ANSI_SEPARATOR;
                 isFirstValue = false;
 
                 numIntoBuffer(cast(uint)flag);
@@ -839,13 +839,13 @@ struct AnsiStyleSet
 
         slice = this._bg.toSequence(colour);
         if(slice.length > 0 && cursor > 0)
-            buffer[cursor++] = ANSI_SEPERATOR;
+            buffer[cursor++] = ANSI_SEPARATOR;
         buffer[cursor..cursor + slice.length] = slice[];
         cursor += slice.length;
 
         slice = this.style.toSequence(style);
         if(slice.length > 0 && cursor > 0)
-            buffer[cursor++] = ANSI_SEPERATOR;
+            buffer[cursor++] = ANSI_SEPARATOR;
         buffer[cursor..cursor + slice.length] = slice[];
         cursor += slice.length;
 
@@ -1288,7 +1288,7 @@ struct AnsiText(alias ImplementationMixin)
         appendToSlice(ANSI_CSI);
         appendToSlice("0"); // Reset all previous styling
         if(sequenceSlice.length > 0)
-            slice[cursor++] = ANSI_SEPERATOR;
+            slice[cursor++] = ANSI_SEPARATOR;
         appendToSlice(sequenceSlice);
         slice[cursor++] = ANSI_COLOUR_END;
         appendToSlice(text);
@@ -2059,7 +2059,7 @@ AnsiSectionRange asAnsiSections(const(char)[] slice) nothrow pure
 /++
  + Enables ANSI support on windows via `SetConsoleMode`. This function is no-op on non-Windows platforms.
  + ++/
-void ansiEnableWindowsSupport()
+void ansiEnableWindowsSupport() @nogc nothrow
 {
     version(Windows)
     {
