@@ -17,41 +17,59 @@ between terminals... because that's just how ANSI support is.
 1. [Overview](#overview)
 1. [Features](#features)
 1. [HOWTO](#howto)
-  * Basic usage:
-    1. [Enable Windows support](#windows-support)
-    1. [Set foreground, background, and styling for a single string](#style-a-single-string)
-    1. [Style multiple strings](#style-multiple-strings)
-    1. [Output an `AnsiText`](#output-an-ansitext)
-    1. [Output via `toString`](#output-with-tostring)
-    1. [Output via `toRange`](#output-with-torange)
-    1. [Output manually](#output-manually)
+   * Basic usage:
+     1. [Enable Windows support](#windows-support)
+     1. [Set foreground, background, and styling for a single string](#style-a-single-string)
+     1. [Style multiple strings](#style-multiple-strings)
+     1. [Output an `AnsiText`](#output-an-ansitext)
+     1. [Output via `toString`](#output-with-tostring)
+     1. [Output via `toRange`](#output-with-torange)
+     1. [Output manually](#output-manually)
 
-  * Advanced usage:
-    1. [Custom AnsiText backing implementation](#custom-ansitext-implementation)
+   * Advanced usage:
+     1. [Custom AnsiText backing implementation](#custom-ansitext-implementation)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
 
 # Features
 
 * -betterC compatible, with non-betterC code conditionally compiled for those that still want convenience:
-  * As a result, most of the codebase is `@nogc nothrow`.
-  * Most of the data types support one or more of: outputting to a sink (output range); provide an input range interface; or expose stack-allocated values to allow manual usage.
-  * Most data types also provide a `toString` that uses the GC if not used with -betterC, as well as the sink-based version of `toString` for even less allocations.
-  * Unittests that are not -betterC compatible are conditionally compiled.
-  * -betterC should be automatically detected, but you can also define the version `JANSI_BetterC` to prevent non-betterC code from generating.
+
+   * As a result, most of the codebase is `@nogc nothrow`.
+  
+   * Most of the data types support one or more of: outputting to a sink (output range); provide an input range interface; or expose stack-allocated values to allow manual usage.
+  
+   * Most data types also provide a `toString` that uses the GC if not used with -betterC, as well as the sink-based version of `toString` for even less allocations.
+   
+   * Unittests that are not -betterC compatible are conditionally compiled.
+   
+   * -betterC should be automatically detected, but you can also define the version `JANSI_BetterC` to prevent non-betterC code from generating.
+
 * Entirely `@safe`, although certain usage is weakly-safe, as the user code can perform unsafe behavior, but D doesn't really give me any tools to stop that from happening:
-  * Potential unsafe behavior is documented where relevant.
-  * User-implemented behavior (e.g. `AnsiText` backings and sinks) have their safety inferred.
+  
+   * Potential unsafe behavior is documented where relevant.
+  
+   * User-implemented behavior (e.g. `AnsiText` backings and sinks) have their safety inferred.
+
 * Primitives to work directly with ANSI colour, ANSI styling, and a "style set" consisting of a foreground, background, and styling.
+
 * Wrap singular strings with an ANSI encoding.
+
 * Wrap multiple strings with separate ANSI encodings inside a single data type:
-  * The data type is highly flexible as it allows user-defined allocation, injection of state variables, and injection of member functions.
-  * Out of the box, copyable GC-backed and stack-backed implementations are available, as well as a non-copyable RAII `malloc`-backed implementation.
+   
+   * The data type is highly flexible as it allows user-defined allocation, injection of state variables, and injection of member functions.
+   
+   * Out of the box, copyable GC-backed and stack-backed implementations are available, as well as a non-copyable RAII `malloc`-backed implementation.
+
 * Execute ANSI SGR commands directly into an `AnsiStyleSet`, in other words parse ANSI SGR sequences.
+
 * Input range that can split up a string by ANSI sequences, and plain text.
+
 * Taking a page from [arsd](https://github.com/adamdruppe/arsd), JANSI commits to being a single-file library with no non-Phobos dependencies:
-  * [silly](https://code.dlang.org/packages/silly) is used as a test dependency, but it's completely optional and unittests will still work without it.
-  * Being a single-file makes it painfully easy to include in non-dub environments.
+  
+   * [silly](https://code.dlang.org/packages/silly) is used as a test dependency, but it's completely optional and unittests will still work without it.
+  
+   * Being a single-file makes it painfully easy to include in non-dub environments.
 
 # HOWTO
 
