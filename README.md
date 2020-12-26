@@ -196,11 +196,11 @@ The sink can be whatever is needed. For example, the standard Phobos `Appender!(
 
 Because it can be annoying for implementations to support both -betterC, and some common non-betterC conveniences, `AnsiText` will automatically generate two overloads of `toString` for the implementation under the following circumstances:
 
-    * The implementation doesn't define its own form of `toString`.
+* The implementation doesn't define its own form of `toString`.
     
-    * JANSI isn't being compiled under -betterC.
+* JANSI isn't being compiled under -betterC.
     
-    * The implementation's `toSink` function can take an output range that accepts `char[]`s.
+* The implementation's `toSink` function can take an output range that accepts `char[]`s.
 
 The following overloads are generated:
 
