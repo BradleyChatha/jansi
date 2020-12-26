@@ -909,7 +909,7 @@ enum AnsiTextImplementationFeatures
  +  is able to avoid allocations (unless the sink itself allocates). See the unittest for an example.
  +
  + See_Also:
- +  `ansiLite` for fluent creation of an `AnsiTextLite`.
+ +  `ansi` for fluent creation of an `AnsiTextLite`.
  +
  +  This struct's unittest for an example of usage.
  + ++/
@@ -953,6 +953,17 @@ struct AnsiTextLite
 
         ///
         AnsiTextLite style(AnsiStyle style) return { this.styleSet.style = style; return this; }
+    }
+
+    /+++ GETTERS +++/
+    @safe @nogc nothrow const
+    {
+        ///
+        AnsiColour fg() { return this.styleSet.fg; }
+        ///
+        AnsiColour bg() { return this.styleSet.bg; }
+        ///
+        AnsiStyle style() { return this.styleSet.style; }
     }
 
     @safe @nogc nothrow const
@@ -1126,7 +1137,7 @@ unittest
 {
     static if(!BetterC)
     {
-        auto text = "Hello!".ansiLite
+        auto text = "Hello!".ansi
                             .fg(Ansi4BitColour.green)
                             .bg(AnsiRgbColour(128, 128, 128))
                             .style(AnsiStyle.init.bold.underline);
@@ -1298,6 +1309,12 @@ struct AnsiText(alias ImplementationMixin)
     void put()(const(char)[] text, AnsiStyleSet styling)
     {
         this.put(text, styling.fg, styling.bg, styling.style);
+    }
+
+    /// ditto.
+    void put()(AnsiTextLite text)
+    {
+        this.put(text.text, text.fg, text.bg, text.style);
     }
 
     // Generate a GC-based toString if circumstances allow.
@@ -2028,18 +2045,18 @@ unittest
  +  An `AnsiTextLite` from the given `text`.
  + ++/
 @safe @nogc
-AnsiTextLite ansiLite(const(char)[] text) nothrow pure
+AnsiTextLite ansi(const(char)[] text) nothrow pure
 {
     return AnsiTextLite(text);
 }
 ///
-@("ansiLite")
+@("ansi")
 unittest
 {
     version(none)
     {
         import std.stdio;
-        writeln("Hello, World!".ansiLite
+        writeln("Hello, World!".ansi
                                .fg(Ansi4BitColour.red)
                                .bg(AnsiRgbColour(128, 128, 128))
                                .style(AnsiStyle.init.bold.underline)
