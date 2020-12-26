@@ -36,3 +36,6 @@ jobs:
 
       - name: Test (Allow output)
         run: dub test -c unittest-print
+
+      - name: Test (Fake BetterC)
+        run: dub test -c unittest-betterc-lite
