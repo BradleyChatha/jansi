@@ -124,9 +124,12 @@ There is a need for storing multiple ANSI-encoded strings into a singular data t
 In comes `AnsiText`, which is a very flexible type which is mostly defined by external backing implementations (you could try [making your own backing](#custom-ansitext-implementation) for it.), but I'll go on about that more from within the advanced usage section.
 
 There are three implementations provided out of the box:
-    * `AnsiTextGC` - **Not compiled under -betterC**. A copyable implementation that uses GC memory.
-    * `AnsiTextMalloc` - A non-copyable implementation that uses `malloc` and `free` directly. Frees memory in its dtor.
-    * `AnsiTextStack!CAPACITY` - A copyable implementation that uses a static array for its memory.
+
+* `AnsiTextGC` - **Not compiled under -betterC**. A copyable implementation that uses GC memory.
+
+* `AnsiTextMalloc` - A non-copyable implementation that uses `malloc` and `free` directly. Frees memory in its dtor.
+
+* `AnsiTextStack!CAPACITY` - A copyable implementation that uses a static array for its memory.
 
 Each implementation documents its own uses, warnings, and additions to the base `AnsiText` type, so for `basic usage` we'll just stick with the bare-bones usage, and
 go with `AnsiTextGC` for simplicity.
